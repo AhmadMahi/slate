@@ -1,0 +1,342 @@
+// Passcode gating: a lock on the app's doors, not on the file.
+//
+// The honesty of this feature is the feature. These tests pin the two things
+// that decide whether it is coherent — inheritance (so a page added to a
+// locked section later is still locked) and search exclusion (so the gate
+// cannot be walked around inside the app that offers it) — and one thing that
+// decides whether it is defensible: the passcode is never written down.
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:openote/model/models.dart';
+import 'package:openote/state/app_state.dart';
+import 'package:openote/state/page_protection.dart';
+import 'package:openote/store/repository.dart';
+
+import 'support/sqlite.dart';
+
+void main() {
+  var haveSqlite = false;
+  setUpAll(() => haveSqlite = initSqliteForTests());
+
+  group('the record itself', () {
+    test('a passcode is never stored, only a salted digest', () {
+      // Someone who opens workspace.json must not find a passcode there. It
+      // buys nothing against an attacker with the .onote — they never see the
+      // prompt — but people reuse passcodes, and leaking a reused one would be
+      // a real harm this feature has no business causing.
+      final rec = newProtection('correct horse battery staple', UnlockPolicy.oneHour);
+      final json = rec.toJson().toString();
+      expect(json, isNot(contains('correct horse')));
+      expect(json, contains(rec.hash));
+      expect(rec.hash.length, 64, reason: 'sha-256 hex');
+    });
+
+    test('the same passcode twice gives different digests', () {
+      // Per-record salt: otherwise one precomputed table covers every user,
+      // and two people with the same passcode are visibly identified as such.
+      final a = newProtection('hunter2', UnlockPolicy.session);
+      final b = newProtection('hunter2', UnlockPolicy.session);
+      expect(a.salt, isNot(b.salt));
+      expect(a.hash, isNot(b.hash));
+      expect(a.matches('hunter2'), isTrue);
+      expect(b.matches('hunter2'), isTrue);
+      expect(a.matches('hunter3'), isFalse);
+    });
+
+    test('it survives a round trip through settings JSON', () {
+      final rec = newProtection('pw', UnlockPolicy.tenMinutes);
+      final back = ProtectionRecord.fromJson(rec.toJson())!;
+      expect(back.matches('pw'), isTrue);
+      expect(back.policy, UnlockPolicy.tenMinutes);
+    });
+
+    test('a malformed record is refused rather than trusted', () {
+      expect(ProtectionRecord.fromJson(null), isNull);
+      expect(ProtectionRecord.fromJson('nonsense'), isNull);
+      expect(ProtectionRecord.fromJson({'salt': 'x'}), isNull);
+    });
+  });
+
+  group('gating a tree', () {
+    late Repository repo;
+    late Directory tmp;
+    late AppState app;
+    late TreeNode group, section, page, otherSection, otherPage;
+
+    setUp(() async {
+      if (!haveSqlite) return;
+      tmp = Directory.systemTemp.createTempSync('onote_protect_');
+      repo = await Repository.openAt(tmp);
+      final nb = await repo.createNotebook('Protected');
+      app = AppState(repo)
+        ..notebookId = nb.id
+        ..spellCheckEnabled = false;
+      app.reloadNodes();
+
+      group = app.importNode(nb.id,
+          TreeNode(kind: NodeKind.sectionGroup, title: 'Year 2', position: 'b0'));
+      section = app.importNode(
+          nb.id,
+          TreeNode(
+              kind: NodeKind.section, parentId: group.id, title: 'Private', position: 'b1'));
+      page = app.importNode(
+          nb.id,
+          TreeNode(
+              kind: NodeKind.page, parentId: section.id, title: 'Diary', position: 'b2'));
+      otherSection = app.importNode(nb.id,
+          TreeNode(kind: NodeKind.section, title: 'Open', position: 'c0'));
+      otherPage = app.importNode(
+          nb.id,
+          TreeNode(
+              kind: NodeKind.page, parentId: otherSection.id, title: 'Lectures', position: 'c1'));
+      app.reloadNodes();
+      app.reloadProtection();
+    });
+
+    tearDown(() {
+      if (!haveSqlite) return;
+      app.cancelPendingSave();
+      repo.dispose();
+      try {
+        tmp.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+
+    test('nothing is locked until something is protected', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      expect(app.isLocked(page.id), isFalse);
+      expect(app.governingNode(page.id), isNull);
+    });
+
+    test('protecting a section locks the pages inside it', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+      expect(app.isLocked(page.id), isTrue);
+      expect(app.governingNode(page.id), section.id);
+      // And leaves everything else alone.
+      expect(app.isLocked(otherPage.id), isFalse);
+    });
+
+    test('a page added to a locked section LATER is locked too', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      // The reason protection is resolved by walking UP from the page rather
+      // than by marking descendants when it is set: no bookkeeping to forget.
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+      final added = app.importNode(
+          app.notebookId!,
+          TreeNode(
+              kind: NodeKind.page, parentId: section.id, title: 'New', position: 'b9'));
+      app.reloadNodes();
+      expect(app.isLocked(added.id), isTrue);
+    });
+
+    test('protecting a group reaches through the section to the page', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      app.protectNode(group.id, 'pw', UnlockPolicy.session);
+      expect(app.governingNode(page.id), group.id);
+      expect(app.isLocked(page.id), isTrue);
+    });
+
+    test('the wrong passcode changes nothing', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+      expect(app.unlockNode(page.id, 'not-it'), isFalse);
+      expect(app.isLocked(page.id), isTrue, reason: 'still locked');
+    });
+
+    test('the right passcode unlocks the whole subtree', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+      expect(app.unlockNode(page.id, 'pw'), isTrue);
+      expect(app.isLocked(page.id), isFalse);
+      expect(app.isLocked(section.id), isFalse);
+    });
+
+    test('"every time" never caches the unlock', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      app.protectNode(section.id, 'pw', UnlockPolicy.always);
+      expect(app.unlockNode(page.id, 'pw'), isTrue);
+      // The caller got its yes for THIS open, and the next one asks again.
+      expect(app.isLocked(page.id), isTrue);
+    });
+
+    test('Lock now forgets every unlock', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+      app.unlockNode(page.id, 'pw');
+      expect(app.isLocked(page.id), isFalse);
+      app.lockAll();
+      expect(app.isLocked(page.id), isTrue);
+    });
+
+    test('removing protection needs the passcode', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+      expect(app.unprotectNode(section.id, 'wrong'), isFalse);
+      expect(app.isLocked(page.id), isTrue);
+      expect(app.unprotectNode(section.id, 'pw'), isTrue);
+      expect(app.isLocked(page.id), isFalse);
+      expect(app.protectionFor(section.id), isNull);
+    });
+
+    test('protection survives reopening the notebook', () async {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      // THE test this file most needed and did not have. It used to build a
+      // fresh AppState and then call reloadProtection() BY HAND — which is
+      // precisely the line production was missing, so it passed for a release
+      // in which every lock evaporated on restart. Reopening a notebook now
+      // goes through the real entry point and nothing else.
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+
+      final fresh = AppState(repo)..spellCheckEnabled = false;
+      addTearDown(fresh.cancelPendingSave);
+      await fresh.selectNotebook(app.notebookId!);
+
+      expect(fresh.isLocked(page.id), isTrue,
+          reason: 'a restart must not drop the gate');
+      expect(fresh.unlockNode(page.id, 'pw'), isTrue);
+    });
+
+    test('switching notebooks does not carry an unlock across', () async {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      // Unlocks are keyed by node id. Ids are unique per notebook, so a stale
+      // entry cannot literally unlock the wrong page — but leaving the map
+      // populated across a switch is how that stops being true the first time
+      // an id is ever reused, and it kept a dead notebook's state alive.
+      final home = app.notebookId!;
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+      expect(app.unlockNode(page.id, 'pw'), isTrue);
+      expect(app.isLocked(page.id), isFalse);
+
+      final other = await repo.createNotebook('Elsewhere');
+      await app.selectNotebook(other.id);
+      await app.selectNotebook(home);
+      // Back where we started, and the gate is closed again.
+      expect(app.isLocked(page.id), isTrue);
+    });
+
+    test('reloadProtection sees what a previous session set', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      // The gate is only as good as its rehydration: a restart that forgot
+      // which nodes were protected would open every locked page.
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+      app.reloadProtection();
+      expect(app.protectionFor(section.id), isNotNull);
+      expect(app.isLocked(page.id), isTrue);
+    });
+
+    test('a locked page locks the SUB-PAGES indented under it', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      // Sub-pages are not children in the data model: every page's parentId is
+      // its SECTION, and the nesting the navigator draws is `level` plus
+      // position order. The gate walked parentId, so it stepped straight past
+      // the parent page to the section and a passcode on a page governed
+      // nothing beneath it. ADR-0008 promises otherwise in as many words.
+      final sub = app.importNode(
+          app.notebookId!,
+          TreeNode(
+              kind: NodeKind.page,
+              parentId: section.id,
+              title: 'Secret sub',
+              level: 1,
+              position: 'b3'));
+      final deeper = app.importNode(
+          app.notebookId!,
+          TreeNode(
+              kind: NodeKind.page,
+              parentId: section.id,
+              title: 'Deeper still',
+              level: 2,
+              position: 'b4'));
+      final after = app.importNode(
+          app.notebookId!,
+          TreeNode(
+              kind: NodeKind.page,
+              parentId: section.id,
+              title: 'Unrelated',
+              position: 'b5'));
+      app.reloadNodes();
+
+      app.protectNode(page.id, 'pw', UnlockPolicy.session);
+      expect(app.isLocked(sub.id), isTrue, reason: 'one level down');
+      expect(app.governingNode(sub.id), page.id);
+      expect(app.isLocked(deeper.id), isTrue, reason: 'two levels down');
+      expect(app.isLocked(after.id), isFalse,
+          reason: 'the run ends at the next page of equal depth');
+
+      // And the passcode of the parent is what opens them.
+      expect(app.unlockNode(deeper.id, 'wrong'), isFalse);
+      expect(app.unlockNode(deeper.id, 'pw'), isTrue);
+      expect(app.isLocked(sub.id), isFalse);
+    });
+
+    test('locking a sub-page does not lock its parent', () {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      // The walk goes UP only. Protecting something nested must not reach
+      // back out and hide the page it sits under.
+      final sub = app.importNode(
+          app.notebookId!,
+          TreeNode(
+              kind: NodeKind.page,
+              parentId: section.id,
+              title: 'Sub',
+              level: 1,
+              position: 'b3'));
+      app.reloadNodes();
+      app.protectNode(sub.id, 'pw', UnlockPolicy.session);
+      expect(app.isLocked(sub.id), isTrue);
+      expect(app.isLocked(page.id), isFalse);
+    });
+
+    test('a locked page is not findable by its TITLE either', () {
+      // The sidebar's search box has two halves — titles matched against
+      // app.nodes, content matched through searchContent — and only the second
+      // consulted the gate. A page called "Therapy" leaks the thing that made
+      // it worth locking, so both halves have to agree.
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      List<TreeNode> titleHits(String q) => app.nodes
+          .where((n) =>
+              (n.kind == NodeKind.page || n.kind == NodeKind.section) &&
+              n.title.toLowerCase().contains(q) &&
+              !app.isLocked(n.id))
+          .toList();
+
+      expect(titleHits('diary').map((n) => n.id), contains(page.id),
+          reason: 'precondition: findable while unprotected');
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+      expect(titleHits('diary'), isEmpty);
+      expect(titleHits('private'), isEmpty, reason: 'the section too');
+      expect(titleHits('lectures').map((n) => n.id), contains(otherPage.id),
+          reason: 'and everything else is untouched');
+      app.unlockNode(page.id, 'pw');
+      expect(titleHits('diary').map((n) => n.id), contains(page.id));
+    });
+
+    test('a locked page is not findable by searching its own words', () async {
+      if (!haveSqlite) return markTestSkipped('sqlite unavailable');
+      // The gate makes no claim about the FILE, but it has to be coherent
+      // inside the app: if search returns the content, the prompt is theatre
+      // even on its own terms.
+      await app.selectPage(page.id);
+      app.blocks = [
+        Block(type: BlockType.text, x: 0, y: 0, content: {'text': 'pumpernickel'})
+      ];
+      app.markDirty();
+      await app.flushSave();
+
+      expect(app.searchContent('pumpernickel').map((h) => h.pageId),
+          contains(page.id),
+          reason: 'precondition: findable while unprotected');
+
+      app.protectNode(section.id, 'pw', UnlockPolicy.session);
+      expect(app.searchContent('pumpernickel'), isEmpty,
+          reason: 'a locked page must not surface through search');
+
+      app.unlockNode(page.id, 'pw');
+      expect(app.searchContent('pumpernickel').map((h) => h.pageId),
+          contains(page.id), reason: 'and comes back once unlocked');
+    });
+  });
+}

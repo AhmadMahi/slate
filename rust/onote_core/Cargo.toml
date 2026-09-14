@@ -1,0 +1,56 @@
+[package]
+name = "onote_core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Openote core: the CRDT-ready page-document model, deterministic mirror merge, and content hashing. The seam where the Rust/Loro sync engine grows in (ADR-0002), exposed to Flutter via flutter_rust_bridge."
+# Apache-2.0, NOT the application's AGPL: this crate is the permissive tier of
+# ADR-0005 (ratified 2026-07-27) so that any tool, including proprietary ones,
+# can read and write .onote files without friction. Adding a copyleft dependency
+# here would silently break that promise — see LICENSING.md.
+license = "Apache-2.0"
+repository = "https://github.com/openote/openote"
+publish = false
+
+# cdylib/staticlib let Flutter link the compiled core; `lib` keeps `cargo test`
+# and downstream Rust use working. The default build (no features) needs none of
+# the bridge machinery, so `cargo test` verifies your toolchain on its own.
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[features]
+default = []
+# Enable only when generating/serving the Flutter bindings (see README).
+bridge = ["dep:flutter_rust_bridge"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# .onepkg import: a OneNote package is a Microsoft Cabinet (usually
+# LZX-compressed) of .one section files; `cab` is a pure-Rust reader with LZX
+# support, so whole-notebook import needs no native tooling.
+cab = "0.6"
+flutter_rust_bridge = { version = "2", optional = true }
+
+[profile.release]
+# Optimize for SPEED: import decompresses + parses tens of MB per notebook, and
+# opt-level="z" (size) measurably slowed LZX + parsing. The DLL grows a little.
+lto = true
+opt-level = 3
+codegen-units = 1
+# MUST stay unwind (the Rust default): the FFI layer relies on `catch_unwind`
+# to stop a panic from crossing the C ABI (UB) when parsing untrusted `.one`
+# bytes. `panic = "abort"` would silently defeat that guard (review M3).
+panic = "unwind"
+
+# Vendored with a two-method patch (FileEntry::uncompressed_offset,
+# Cabinet::read_folder_data) enabling single-pass folder extraction — stock
+# read_file re-decompresses the LZX folder prefix per file, which is quadratic
+# over a 27-file/85MB OneNote package (~35s of a ~41s import). See vendor/cab.
+[patch.crates-io]
+cab = { path = "vendor/cab" }
+
+# serde_json's default Map is a BTreeMap (sorted keys), which is what makes the
+# content hash canonical and stable across devices. Do NOT enable its
+# `preserve_order` feature anywhere in the build graph — it swaps in an
+# insertion-ordered map and would break cross-device hash agreement (review M4).
