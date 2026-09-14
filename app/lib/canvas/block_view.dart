@@ -454,6 +454,9 @@ class _BlockViewState extends State<BlockView> {
       // measured height from renderSizes, since a fresh map has no stored one).
       b.type == BlockType.mindmap ||
       b.type == BlockType.presentation ||
+      // A code block starts as tall as its code, but its bottom/corner grips
+      // let it be pinned to a height and scroll longer code inside that box.
+      b.type == BlockType.code ||
       b.h != null;
 
   void _resize(DragUpdateDetails d) => _resizeBy(d, width: true, height: false);

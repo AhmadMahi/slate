@@ -65,6 +65,7 @@ import 'media_link_dialog.dart';
 import 'quiz_import_dialog.dart';
 import 'onote_dialog.dart';
 import 'sidebar.dart';
+import 'template_ai_dialog.dart';
 
 /// Put one thing on the page. [at] is the top-left the block should take.
 typedef InsertRun = Future<void> Function(
@@ -482,6 +483,18 @@ final List<InsertGroup> kInsertGroups = [
       // Save as template, which is where it belongs by meaning.
       onMenu: false,
       size: Size.zero,
+      extras: [
+        InsertItem(
+          id: 'ai-template',
+          icon: Icons.auto_awesome,
+          label: 'Generate with AI',
+          tooltip: 'Describe a layout and let AI design the template',
+          opensPicker: true,
+          onMenu: false,
+          size: Size.zero,
+          run: (context, app, at) => showTemplateAiDialog(context, app),
+        ),
+      ],
       run: (context, app, at) => promptApplyTemplate(context, app),
     ),
   ]),

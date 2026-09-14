@@ -1,39 +1,41 @@
 import 'package:flutter/material.dart';
 
 import '../ai/ai_prompts.dart';
-import '../mindmap/mindmap.dart';
-import '../mindmap/mindmap_ai.dart';
+import '../ai/template_ai.dart';
 import '../state/app_state.dart';
 import '../theme/onote_theme.dart';
 import 'onote_dialog.dart';
 
-/// Describe a mind map and let a cloud model draft it.
-///
-/// Returns the generated tree, or null if the user cancelled or nothing
-/// usable came back. The caller decides whether to replace the current map.
-Future<MindNode?> showMindmapAiDialog(BuildContext context, AppState app) {
-  return showOnoteDialog<MindNode>(
+/// Describe a page template and let a cloud model design it, then lay it out
+/// below whatever is on the page (the same placement as any other template).
+Future<void> showTemplateAiDialog(BuildContext context, AppState app) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final applied = await showOnoteDialog<bool>(
     context: context,
-    builder: (_) => _MindmapAiDialog(app: app),
+    builder: (_) => _TemplateAiDialog(app: app),
   );
+  if (applied == true) {
+    messenger?.showSnackBar(
+        const SnackBar(content: Text('Template added to the page.')));
+  }
 }
 
-class _MindmapAiDialog extends StatefulWidget {
-  const _MindmapAiDialog({required this.app});
+class _TemplateAiDialog extends StatefulWidget {
+  const _TemplateAiDialog({required this.app});
   final AppState app;
 
   @override
-  State<_MindmapAiDialog> createState() => _MindmapAiDialogState();
+  State<_TemplateAiDialog> createState() => _TemplateAiDialogState();
 }
 
-class _MindmapAiDialogState extends State<_MindmapAiDialog> {
-  final _topic = TextEditingController();
+class _TemplateAiDialogState extends State<_TemplateAiDialog> {
+  final _desc = TextEditingController();
   bool _busy = false;
   String? _error;
 
   @override
   void dispose() {
-    _topic.dispose();
+    _desc.dispose();
     super.dispose();
   }
 
@@ -44,18 +46,20 @@ class _MindmapAiDialogState extends State<_MindmapAiDialog> {
           'Connect an AI provider first: Settings → Connections → AI provider.');
       return;
     }
-    final topic = _topic.text.trim();
-    if (topic.isEmpty) {
-      setState(() => _error = 'Describe the mind map you want.');
+    final desc = _desc.text.trim();
+    if (desc.isEmpty) {
+      setState(() => _error = 'Describe the template you want.');
       return;
     }
     setState(() {
       _busy = true;
       _error = null;
     });
-    final res = await generateMindmapOutline(client,
-        topic: topic,
-        systemPrompt: widget.app.systemPromptFor(AiFeature.mindmap));
+    final res = await generateTemplate(
+      client,
+      description: desc,
+      systemPrompt: widget.app.systemPromptFor(AiFeature.template),
+    );
     widget.app.addAiTokens(res.tokens);
     if (!mounted) return;
     if (!res.ok) {
@@ -65,21 +69,15 @@ class _MindmapAiDialogState extends State<_MindmapAiDialog> {
       });
       return;
     }
-    final root = mindmapFromOutline(res.markdown!);
-    if (root == null) {
-      setState(() {
-        _busy = false;
-        _error = 'The model did not return a usable outline. Try again.';
-      });
-      return;
-    }
-    Navigator.of(context).pop(root);
+    final ok = widget.app.applyTemplateRaw(res.json!);
+    if (!mounted) return;
+    Navigator.of(context).pop(ok);
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Generate a mind map with AI'),
+      title: const Text('Generate a template with AI'),
       content: SizedBox(
         width: 440,
         child: Column(
@@ -87,23 +85,23 @@ class _MindmapAiDialogState extends State<_MindmapAiDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Describe what the mind map should cover. The AI drafts it as a '
-              'branching outline, which becomes the map.',
+              'Describe the page layout you want. The AI drafts it as a set of '
+              'headings and sections, which are placed below anything already '
+              'on the page.',
               style: TextStyle(fontSize: 12.5, height: 1.4),
             ),
             const SizedBox(height: 12),
             TextField(
-              controller: _topic,
+              controller: _desc,
               autofocus: true,
               minLines: 2,
-              maxLines: 4,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _busy ? null : _generate(),
+              maxLines: 5,
               style: const TextStyle(fontSize: 13, height: 1.35),
               decoration: const InputDecoration(
                 isDense: true,
                 border: OutlineInputBorder(),
-                hintText: 'e.g. the water cycle for a grade 6 class',
+                hintText: 'e.g. a weekly lesson plan with objectives, '
+                    'activities, homework and notes',
               ),
             ),
             if (_busy)

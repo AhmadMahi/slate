@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import '../ai/ai_prompts.dart';
 import '../model/models.dart';
 import '../quiz/quiz_ai.dart';
 import '../quiz/quiz_import.dart';
@@ -96,7 +97,10 @@ class _QuizImportDialogState extends State<QuizImportDialog> {
       _status = 'Thinking…';
       _questions = null;
     });
-    final r = await generateQuiz(client, topic: topic, count: count);
+    final r = await generateQuiz(client,
+        topic: topic,
+        count: count,
+        systemPrompt: widget.app.systemPromptFor(AiFeature.quiz));
     widget.app.addAiTokens(r.tokens);
     if (!mounted) return;
     setState(() {

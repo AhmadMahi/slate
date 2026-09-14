@@ -10,6 +10,7 @@ import 'package:super_clipboard/super_clipboard.dart'
     show Formats, SystemClipboard;
 
 import '../ai/ai_provider.dart';
+import '../ai/ai_prompts.dart';
 import '../canvas/align_guides.dart';
 import '../canvas/canvas_controller.dart';
 import '../core/engine.dart';
@@ -974,6 +975,59 @@ class AppState extends ChangeNotifier
     _saveAi();
     notifyListeners();
   }
+
+  // ── Per-feature system prompts (AI-PROMPTS) ─────────────────────────────
+  //
+  // One editable "persona" per AI feature (see [AiFeature]). Only the persona
+  // is stored and editable here; each generator appends its own fixed format
+  // rules, so customising tone can never break a parser. An empty override
+  // means "use the default", which lets a shipped default reach anyone who
+  // never customised it.
+  final Map<String, String> _aiPromptOverrides = {};
+
+  void _loadAiPrompts() {
+    final raw = _repo.getSetting('aiPrompts');
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (k is String && v is String && v.trim().isNotEmpty) {
+          _aiPromptOverrides[k] = v;
+        }
+      });
+    }
+    // Migrate the single Ask AI prompt this replaced, if it was customised
+    // before this list existed. Read once; the new key owns it from now on.
+    if (!_aiPromptOverrides.containsKey(AiFeature.askAi.id)) {
+      final old = _repo.getSetting('askAiPrompt');
+      if (old is String && old.trim().isNotEmpty) {
+        _aiPromptOverrides[AiFeature.askAi.id] = old.trim();
+      }
+    }
+  }
+
+  /// The instruction a feature runs with: the user's custom text if any, else
+  /// the built-in default.
+  String systemPromptFor(AiFeature f) {
+    final o = _aiPromptOverrides[f.id];
+    return (o != null && o.trim().isNotEmpty) ? o : f.defaultPrompt;
+  }
+
+  /// Whether the user has replaced a feature's default with their own text.
+  bool aiPromptIsCustom(AiFeature f) =>
+      (_aiPromptOverrides[f.id]?.trim().isNotEmpty ?? false);
+
+  void setSystemPrompt(AiFeature f, String text) {
+    final t = text.trim();
+    if (t.isEmpty) {
+      _aiPromptOverrides.remove(f.id);
+    } else {
+      _aiPromptOverrides[f.id] = t;
+    }
+    _repo.setSetting('aiPrompts',
+        _aiPromptOverrides.isEmpty ? null : Map.of(_aiPromptOverrides));
+    notifyListeners();
+  }
+
+  void resetSystemPrompt(AiFeature f) => setSystemPrompt(f, '');
 
   /// A client for the active provider, or null when it is not connected.
   /// The quiz, mind-map and Ask AI features call this and prompt the user to
@@ -5154,18 +5208,12 @@ class AppState extends ChangeNotifier
     notifyListeners();
   }
 
-  /// The instructions ("system prompt") the Ask AI chat runs with. Editable in
-  /// settings so a teacher can steer the tone; empty falls back to the default.
-  String askAiSystemPrompt = kDefaultAskAiPrompt;
+  /// The instructions ("system prompt") the Ask AI chat runs with — now one
+  /// entry in the shared per-feature list (see [systemPromptFor]). Kept as a
+  /// named getter/setter because the Ask AI panel reads it on every turn.
+  String get askAiSystemPrompt => systemPromptFor(AiFeature.askAi);
 
-  void setAskAiSystemPrompt(String v) {
-    final t = v.trim();
-    askAiSystemPrompt = t.isEmpty ? kDefaultAskAiPrompt : t;
-    // Store the raw text (empty means "use the default"), so shipping a new
-    // default later reaches anyone who never customised it.
-    _repo.setSetting('askAiPrompt', t.isEmpty ? null : t);
-    notifyListeners();
-  }
+  void setAskAiSystemPrompt(String v) => setSystemPrompt(AiFeature.askAi, v);
 
   /// Eraser behaviour (INK-6). Session-scoped like tool/penSize — a mode, not
   /// a preference.
@@ -6438,8 +6486,7 @@ class AppState extends ChangeNotifier
     if (sc is bool) spellCheckEnabled = sc;
     final aa = _repo.getSetting('askAi');
     if (aa is bool) askAiEnabled = aa;
-    final aap = _repo.getSetting('askAiPrompt');
-    if (aap is String && aap.trim().isNotEmpty) askAiSystemPrompt = aap.trim();
+    _loadAiPrompts();
     final am = _repo.getSetting('angleMode');
     mathAngleMode = am == 'rad' ? AngleMode.radians : AngleMode.degrees;
     onboardingSeen = _repo.getSetting('onboardingSeen') == true;
@@ -7590,6 +7637,14 @@ class AppState extends ChangeNotifier
     final raw =
         (t is Map ? t[name] as String? : null) ?? builtinTemplates[name];
     if (raw == null) return;
+    applyTemplateRaw(raw);
+  }
+
+  /// Apply a template from its raw `{page, blocks}` JSON, laid out below any
+  /// existing content (see [applyTemplate]). Used by built-in and user
+  /// templates and by the AI template generator. Returns true if any block
+  /// landed.
+  bool applyTemplateRaw(String raw) {
     pushUndo();
     final j = jsonDecode(raw) as Map<String, dynamic>;
     final onEmptyPage = blocks.isEmpty;
@@ -7638,7 +7693,7 @@ class AppState extends ChangeNotifier
       }
       incoming.add(fresh);
     }
-    if (incoming.isEmpty) return;
+    if (incoming.isEmpty) return false;
 
     // Translate as one piece, so the template still looks like itself.
     final templateTop = incoming.map((b) => b.y).reduce(math.min);
@@ -7663,6 +7718,7 @@ class AppState extends ChangeNotifier
     docRevision++;
     markDirty();
     notifyListeners();
+    return true;
   }
 
   /// Shift an ink block's strokes with its box. Stroke coordinates are
@@ -7687,6 +7743,12 @@ class AppState extends ChangeNotifier
   static const double pageLeftMargin = 44;
   static const double titleBandHeight = 84; // title + date live here
   static const double contentTop = titleBandHeight + 8;
+
+  /// A spot just below everything on the page — where a generated block (an
+  /// Ask AI summary, quiz or mind map) should land so it never covers existing
+  /// content. On an empty page it is the top of the writing area.
+  Offset spotBelowContent() => Offset(pageLeftMargin,
+      blocks.isEmpty ? contentTop : contentExtent().bottom + 24);
 
   /// Content-only extent (right & bottom edges), for page growth & fit.
   ({double right, double bottom}) contentExtent() {

@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../ai/ai_prompts.dart';
 import '../mindmap/mindmap.dart';
 import '../mindmap/mindmap_ai.dart';
 import '../model/models.dart';
@@ -361,6 +362,7 @@ class _MindmapBlockViewState extends State<MindmapBlockView> {
       client,
       path: _pathTo(id),
       existing: [for (final c in node.children) c.text],
+      systemPrompt: widget.app.systemPromptFor(AiFeature.mindmapExpand),
     );
     widget.app.addAiTokens(res.tokens);
     if (!mounted) return;

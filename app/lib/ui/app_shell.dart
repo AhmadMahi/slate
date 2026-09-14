@@ -561,6 +561,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
 
     if (ctrl) {
+      // Cmd/Ctrl+A — select every block on the page. Reached only here, past
+      // the `editable` early-return above, so while you are typing in a box
+      // Cmd+A still selects the TEXT; on the bare canvas it selects the blocks.
+      if (k == LogicalKeyboardKey.keyA) {
+        if (app.blocks.isEmpty) return false;
+        app.selectMany(app.blocks.map((b) => b.id));
+        return true;
+      }
       if (k == LogicalKeyboardKey.keyC) {
         if (app.selectedIds.isEmpty) return false;
         app.copySelectedBlocks();

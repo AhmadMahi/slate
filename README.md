@@ -88,7 +88,7 @@ failings by construction, and adds a layer of teaching and AI tools on top:
 - ➗ **Beautiful math entry** — type linearly and watch it build into 2-D notation.
 - 🖊️ **First-class pen and handwriting** — low-latency, pressure-sensitive ink.
 - ❓ **Quizzes**, 🧠 **mind maps** and 📽️ **slide presentations** built into the page.
-- 🤖 **Bring-your-own-key AI** — generate quizzes and mind maps, grow a branch, and chat with an assistant, using your own OpenAI or OpenRouter key.
+- 🤖 **Bring-your-own-key AI** — generate quizzes, mind maps, code and page templates, grow a branch, turn a chat answer into a summary/quiz/mind map, and chat with an assistant, using your own OpenAI or OpenRouter key.
 - 📦 **An open, documented file format** — local-first, no lock-in, readable without us.
 - ☁️ **Cloud-optional sync** — through any folder you already sync, or a GitHub repo.
 
@@ -107,6 +107,9 @@ failings by construction, and adds a layer of teaching and AI tools on top:
   tool palette).
 - **Place anything anywhere.** Click empty canvas to start a text box, or use
   **Insert**. Blocks are free-form by default and can snap to a grid.
+- **Select everything.** `Cmd`/`Ctrl` + **A** selects every block on the page
+  (when you are not typing in a box — there it still selects the text), so you
+  can move, copy or delete the whole page at once.
 
 ### Writing: text, Markdown, math, code, tables
 
@@ -115,7 +118,12 @@ failings by construction, and adds a layer of teaching and AI tools on top:
 - **Math.** Insert → Equation, then type linearly (e.g. `int_0^1 x^2 dx`) and it
   builds into 2-D notation. A **Graph** button on the equation draws its curve; a
   **Substitute** shows the value at a point.
-- **Code.** Insert → Code for a monospace block that respects where you click.
+- **Code.** Insert → Code for a monospace block with syntax highlighting; pick a
+  language (or let it auto-detect), and `sql`/`js` blocks can **run** on this
+  device. **Write or rewrite it with AI** — the sparkle button beside Copy turns
+  a plain-language description into code, or rewrites the code already there to
+  an instruction (respecting the chosen language). **Drag its corner or bottom**
+  to give it a fixed height; longer code then scrolls inside the box.
 - **Tables.** Insert → Table, or import a CSV into one.
 - **Word count / reading time** is shown per page in the status bar.
 
@@ -218,9 +226,26 @@ a notebook.
 4. Click **Connect** — Slate makes one tiny test call and shows a green tick when
    it works. A running **token-usage** total is shown there, with a reset.
 
-This powers the quiz generator, the mind-map generator and Ask AI. It is separate
-from **AI access** (the MCP server, which lets external tools like Claude read
-your notes) — both can be on at once.
+**Provider in use.** Keep keys for both OpenAI and OpenRouter if you like; the
+**Provider in use** control at the top of the dialog chooses which one every AI
+feature calls. Switch it any time — only a connected provider can be chosen.
+
+**Custom instructions per feature.** Under **AI instructions**, every place Slate
+uses AI has its own editable instruction — Ask AI, the quiz generator, the
+mind-map generator, grow-a-branch, code generation, summaries, and templates.
+Reset any of them to normal, or write your own to change how that feature behaves
+(its tone, level or language). The required output format for each is added
+automatically, so a custom instruction can never break generation.
+
+This powers the quiz generator, the mind-map generator, **code generation**,
+**AI templates**, the **Ask AI** answer actions and the chat. It is separate from
+**AI access** (the MCP server, which lets external tools like Claude read your
+notes) — both can be on at once.
+
+**Generate a template with AI.** Insert → Template → **Generate with AI**:
+describe a page layout ("a weekly lesson plan with objectives, activities and
+homework") and the model drafts the sections, laid out below anything already on
+the page.
 
 ### Ask AI
 
@@ -230,9 +255,14 @@ A small chat for quick questions while you work.
   bottom-right of the page.
 - Ask a question, get an answer, using your connected provider. Answers are not
   saved to the notebook.
-- **Steer its style.** In the AI provider settings, **Ask AI instructions** lets
-  you set the tone/subject/language — for example, *"You are a patient tutor for
-  high-school biology; use simple analogies and end with a quick check
+- **Do something with an answer.** Each answer has a row of actions (also on
+  right-click): **Copy**, or turn it straight into a block on the page —
+  **Insert as summary** (a text block), **Insert as quiz**, or **Insert as mind
+  map**. Slate generates the block from the answer and drops it below your
+  content.
+- **Steer its style.** In the AI provider settings, the **Ask AI** instruction
+  lets you set the tone/subject/language — for example, *"You are a patient tutor
+  for high-school biology; use simple analogies and end with a quick check
   question."*
 
 ### Sync and backup

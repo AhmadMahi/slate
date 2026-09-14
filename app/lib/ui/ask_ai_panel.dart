@@ -1,8 +1,13 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../ai/ai_prompts.dart';
 import '../ai/ai_provider.dart';
+import '../mindmap/mindmap_ai.dart';
+import '../model/models.dart';
+import '../quiz/quiz_ai.dart';
 import '../state/app_state.dart';
 import '../theme/onote_theme.dart';
 import '../theme/tokens.dart';
@@ -34,6 +39,9 @@ class _AskAiPanelState extends State<AskAiPanel> {
 
   bool _open = false;
   bool _sending = false;
+  // While an "insert as…" action is generating a block from an answer, so the
+  // menu buttons disable and a thin progress line shows.
+  bool _acting = false;
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final _turns = <_Turn>[];
@@ -90,6 +98,132 @@ class _AskAiPanelState extends State<AskAiPanel> {
     _toEnd();
   }
 
+  // ── Doing something with an answer ──────────────────────────────────────
+
+  void _toast(String message) {
+    final m = ScaffoldMessenger.maybeOf(context);
+    m?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _copy(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    _toast('Answer copied.');
+  }
+
+  /// Turn an answer into a text summary block at the bottom of the page.
+  Future<void> _insertSummary(String answer) async {
+    final client = app.aiClient();
+    if (client == null) return _toast('Connect an AI provider first.');
+    setState(() => _acting = true);
+    final res = await client.chat([
+      AiMessage.system('${app.systemPromptFor(AiFeature.summary)}\n\n'
+          'Summarise the text the user sends into a concise Markdown summary. '
+          'Reply with only the summary.'),
+      AiMessage.user(answer),
+    ], temperature: 0.3);
+    app.addAiTokens(res.totalTokens);
+    if (!mounted) return;
+    setState(() => _acting = false);
+    if (!res.ok) return _toast(res.error ?? 'Could not summarise.');
+    final at = app.spotBelowContent();
+    final b = app.addBlock(Block(
+      type: BlockType.text,
+      x: at.dx,
+      y: at.dy,
+      w: 480,
+      content: {'text': res.text.trim()},
+    ));
+    app.select(b.id);
+    _toast('Summary added to the page.');
+  }
+
+  /// Turn an answer into a quiz block at the bottom of the page.
+  Future<void> _insertQuiz(String answer) async {
+    final client = app.aiClient();
+    if (client == null) return _toast('Connect an AI provider first.');
+    setState(() => _acting = true);
+    final r = await generateQuiz(client,
+        topic: answer,
+        count: 5,
+        systemPrompt: app.systemPromptFor(AiFeature.quiz));
+    app.addAiTokens(r.tokens);
+    if (!mounted) return;
+    setState(() => _acting = false);
+    if (!r.parse.isOk) {
+      return _toast(r.parse.error ?? 'Could not build a quiz from that.');
+    }
+    final qs = r.parse.questions;
+    final at = app.spotBelowContent();
+    final b = app.addBlock(Block(
+      type: BlockType.quiz,
+      x: at.dx,
+      y: at.dy,
+      w: 420,
+      content: {
+        'name': 'Quiz',
+        'questions': [for (final q in qs) q.toJson()],
+        'answers': List<int>.filled(qs.length, -1),
+        'revealed': List<bool>.filled(qs.length, false),
+      },
+    ));
+    app.select(b.id);
+    _toast(
+        '${qs.length} question${qs.length == 1 ? '' : 's'} added as a quiz.');
+  }
+
+  /// Turn an answer into a mind map block at the bottom of the page.
+  Future<void> _insertMindmap(String answer) async {
+    final client = app.aiClient();
+    if (client == null) return _toast('Connect an AI provider first.');
+    setState(() => _acting = true);
+    final res = await generateMindmapOutline(client,
+        topic: answer, systemPrompt: app.systemPromptFor(AiFeature.mindmap));
+    app.addAiTokens(res.tokens);
+    if (!mounted) return;
+    setState(() => _acting = false);
+    if (!res.ok) return _toast(res.error ?? 'Could not build a mind map.');
+    final root = mindmapFromOutline(res.markdown!);
+    if (root == null) return _toast('The model did not return a usable map.');
+    final at = app.spotBelowContent();
+    final b = app.addBlock(Block(
+      type: BlockType.mindmap,
+      x: at.dx,
+      y: at.dy,
+      w: 360,
+      content: {'root': root.toJson()},
+    ));
+    app.select(b.id);
+    _toast('Mind map added to the page.');
+  }
+
+  /// The menu a right-click (or the ✨ button) opens on an answer.
+  Future<void> _showAnswerMenu(String text, Offset globalPos) async {
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox?;
+    if (overlay == null) return;
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+          globalPos & const Size(1, 1), Offset.zero & overlay.size),
+      items: const [
+        PopupMenuItem(value: 'copy', child: Text('Copy')),
+        PopupMenuItem(value: 'summary', child: Text('Insert as summary')),
+        PopupMenuItem(value: 'quiz', child: Text('Insert as quiz')),
+        PopupMenuItem(value: 'mindmap', child: Text('Insert as mind map')),
+      ],
+    );
+    switch (choice) {
+      case 'copy':
+        _copy(text);
+      case 'summary':
+        await _insertSummary(text);
+      case 'quiz':
+        await _insertQuiz(text);
+      case 'mindmap':
+        await _insertMindmap(text);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return _open ? _panel(context) : _bubble(context);
@@ -143,6 +277,7 @@ class _AskAiPanelState extends State<AskAiPanel> {
             children: [
               _header(context, scheme, s),
               Expanded(child: _messages(context, scheme, s)),
+              if (_acting) const LinearProgressIndicator(minHeight: 2),
               _composer(context, scheme, s),
             ],
           ),
@@ -234,25 +369,72 @@ class _AskAiPanelState extends State<AskAiPanel> {
     final isUser = turn?.role == 'user';
     final bg = isUser ? scheme.primary : s.well;
     final fg = isUser ? scheme.onPrimary : s.textPrimary;
-    return Align(
+    // A real, finished answer gets a right-click menu and an action row.
+    final isAnswer = turn != null && turn.role == 'assistant';
+    final bubble = Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        constraints: const BoxConstraints(maxWidth: 250),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: isUser ? null : Border.all(color: s.border),
+      child: GestureDetector(
+        onSecondaryTapDown: isAnswer
+            ? (d) => _showAnswerMenu(turn.text, d.globalPosition)
+            : null,
+        child: Container(
+          margin: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          constraints: const BoxConstraints(maxWidth: 250),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(12),
+            border: isUser ? null : Border.all(color: s.border),
+          ),
+          child: turn == null
+              ? SizedBox(
+                  width: 34,
+                  child: Text('…',
+                      style: TextStyle(fontSize: 16, color: s.textSecondary)),
+                )
+              : SelectableText(turn.text,
+                  style: TextStyle(fontSize: 12.5, height: 1.35, color: fg)),
         ),
-        child: turn == null
-            ? SizedBox(
-                width: 34,
-                child: Text('…',
-                    style: TextStyle(fontSize: 16, color: s.textSecondary)),
-              )
-            : SelectableText(turn.text,
-                style: TextStyle(fontSize: 12.5, height: 1.35, color: fg)),
+      ),
+    );
+    if (!isAnswer) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: bubble,
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [bubble, _answerActions(context, turn.text)],
+      ),
+    );
+  }
+
+  /// Copy, and turn-into: summary / quiz / mind map, shown under each answer.
+  Widget _answerActions(BuildContext context, String text) {
+    Widget btn(IconData icon, String tip, VoidCallback? onTap) => IconButton(
+          icon: Icon(icon, size: 15),
+          tooltip: tip,
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.all(4),
+          constraints: const BoxConstraints(),
+          color: OnoteColors.graphite400,
+          onPressed: _acting ? null : onTap,
+        );
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, top: 1),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          btn(Icons.copy, 'Copy', () => _copy(text)),
+          btn(Icons.summarize_outlined, 'Insert as summary',
+              () => _insertSummary(text)),
+          btn(Icons.quiz_outlined, 'Insert as quiz', () => _insertQuiz(text)),
+          btn(Icons.account_tree_outlined, 'Insert as mind map',
+              () => _insertMindmap(text)),
+        ],
       ),
     );
   }

@@ -13,8 +13,12 @@ import '../ai/ai_provider.dart';
 import 'mindmap.dart';
 
 /// The house rules: a single Markdown outline, nothing else.
-String mindmapSystemPrompt() =>
-    'You design mind maps and reply with ONLY a Markdown outline, no prose and '
+///
+/// [persona] is the editable behaviour set in Settings; the fixed outline
+/// format is always appended so customising it can never break the importer.
+String mindmapSystemPrompt([String? persona]) =>
+    '${(persona == null || persona.trim().isEmpty) ? 'You design mind maps.' : persona.trim()} '
+    'Reply with ONLY a Markdown outline, no prose and '
     'no code fences. Use one top-level heading "# Central idea" for the centre, '
     'then nested bullet points ("-") for branches and sub-branches, indented '
     'two spaces per level. Keep every label short — a few words at most. Aim '
@@ -35,10 +39,11 @@ class MindmapAiResult {
 Future<MindmapAiResult> generateMindmapOutline(
   AiClient client, {
   required String topic,
+  String? systemPrompt,
 }) async {
   final res = await client.chat(
     [
-      AiMessage.system(mindmapSystemPrompt()),
+      AiMessage.system(mindmapSystemPrompt(systemPrompt)),
       AiMessage.user(mindmapUserPrompt(topic)),
     ],
     temperature: 0.6,
@@ -78,8 +83,9 @@ String _stripFence(String s) {
 /// Grow the map from a single node: given where it sits in the tree, the model
 /// suggests a few child sub-topics (each with a few of its own), which are
 /// appended under that node. Structured JSON so the shape is deterministic.
-String expandSystemPrompt() =>
-    'You extend a mind map. Given a node and the path to it, suggest child '
+String expandSystemPrompt([String? persona]) =>
+    '${(persona == null || persona.trim().isEmpty) ? 'You extend a mind map.' : persona.trim()} '
+    'Given a node and the path to it, suggest child '
     'sub-topics for that node. Reply with ONE JSON object and nothing else:\n'
     '{"branches":[{"text":"short label","children":["short","short"]}]}\n'
     'Rules: three to five branches; each may have zero to four short children; '
@@ -108,10 +114,11 @@ Future<BranchesAiResult> generateBranches(
   AiClient client, {
   required String path,
   required List<String> existing,
+  String? systemPrompt,
 }) async {
   final res = await client.chat(
     [
-      AiMessage.system(expandSystemPrompt()),
+      AiMessage.system(expandSystemPrompt(systemPrompt)),
       AiMessage.user(expandUserPrompt(path, existing)),
     ],
     temperature: 0.6,

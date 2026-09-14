@@ -13,8 +13,13 @@ import '../ai/ai_provider.dart';
 import 'quiz_import.dart';
 
 /// The house rules handed to the model, kept deterministic so the reply parses.
-String quizSystemPrompt() =>
-    'You write multiple-choice quizzes. Reply with ONE JSON object and nothing '
+///
+/// [persona] is the editable behaviour set in Settings (tone, level, subject);
+/// the fixed JSON format rules are always appended so customising the persona
+/// can never break the parser.
+String quizSystemPrompt([String? persona]) =>
+    '${(persona == null || persona.trim().isEmpty) ? 'You write multiple-choice quizzes.' : persona.trim()}\n\n'
+    'Reply with ONE JSON object and nothing '
     'else, in exactly this shape:\n'
     '{"questions":[{"question":"...","options":["...","...","...","..."],'
     '"correct":1,"explanation":"..."}]}\n'
@@ -91,10 +96,11 @@ Future<QuizAiResult> generateQuiz(
   AiClient client, {
   required String topic,
   required int count,
+  String? systemPrompt,
 }) async {
   final res = await client.chat(
     [
-      AiMessage.system(quizSystemPrompt()),
+      AiMessage.system(quizSystemPrompt(systemPrompt)),
       AiMessage.user(quizUserPrompt(topic, count)),
     ],
     temperature: 0.4,

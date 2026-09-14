@@ -26,7 +26,7 @@ const kAppVersion = '1.0.0';
 /// Our release build number. Releases are tagged `slate-<kAppVersion>-b<N>`;
 /// this is the running build's N, so the update check can tell one 0.8.0 build
 /// from the next. Bump it with every release.
-const kAppBuild = 1;
+const kAppBuild = 2;
 
 const _kLatestReleaseApi =
     'https://api.github.com/repos/AhmadMahi/openote/releases/latest';
@@ -236,7 +236,9 @@ List<String> _reflow(List<String> lines) {
     // too — so refusing to fold it would have made us differ from the page
     // this text is also read on. The guard that matters is the one in
     // [_acceptsContinuation]: nothing gets appended to a code line.
-    if (out.isNotEmpty && _acceptsContinuation(out.last) && !_startsBlock(line)) {
+    if (out.isNotEmpty &&
+        _acceptsContinuation(out.last) &&
+        !_startsBlock(line)) {
       out[out.length - 1] = '${out.last.trimRight()} ${line.trim()}';
     } else {
       out.add(line);

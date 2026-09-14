@@ -9,6 +9,7 @@ import '../state/app_state.dart';
 import '../theme/onote_theme.dart';
 import 'code_highlight.dart';
 import '../theme/tokens.dart';
+import '../ui/code_ai_dialog.dart';
 import '../ui/onote_dialog.dart';
 
 /// Code block (CODE-1): monospace, language label, copy button, preserved
@@ -123,6 +124,29 @@ class _CodeBlockViewState extends State<CodeBlockView> {
     widget.app.updateBlock(widget.block);
   }
 
+  /// Write (or rewrite) this block's code with the AI. What is already in the
+  /// block is the context: an empty block generates from a description, and a
+  /// filled one is rewritten to an instruction. The whole block is replaced by
+  /// the result, as one undo step.
+  Future<void> _generateWithAi() async {
+    final existing = widget.block.content['source'] as String? ?? '';
+    final code = await showCodeAiDialog(
+      context,
+      widget.app,
+      existing: existing,
+      languageName: _language.name,
+    );
+    if (code == null || !mounted) return;
+    widget.app.pushUndo();
+    widget.block.content['source'] = code;
+    _controller.text = code;
+    // Re-detect the language from the new source, unless the user picked one.
+    _autoDetect(existing, code);
+    widget.block.updatedAt = nowMs();
+    widget.app.updateBlock(widget.block);
+    if (mounted) setState(() {});
+  }
+
   bool _wasEditing = false;
 
   @override
@@ -163,7 +187,8 @@ class _CodeBlockViewState extends State<CodeBlockView> {
     _handleExitTransition();
     final dark = Theme.of(context).brightness == Brightness.dark;
     final mono = TextStyle(
-      fontFamily: 'JetBrains Mono', fontFamilyFallback: onoteFontFallback,
+      fontFamily: 'JetBrains Mono',
+      fontFamilyFallback: onoteFontFallback,
       fontSize: 13,
       height: 1.45,
       color: dark ? OnoteColors.moon100 : OnoteColors.graphite700,
@@ -213,8 +238,7 @@ class _CodeBlockViewState extends State<CodeBlockView> {
                           child: SizedBox(
                               width: 13,
                               height: 13,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2)),
+                              child: CircularProgressIndicator(strokeWidth: 2)),
                         )
                       : IconButton(
                           icon: const Icon(Icons.play_arrow, size: 16),
@@ -230,94 +254,117 @@ class _CodeBlockViewState extends State<CodeBlockView> {
                   onPressed: () =>
                       Clipboard.setData(ClipboardData(text: source)),
                 ),
+                // Generate or rewrite the code with AI — sits beside Copy so it
+                // is reachable whether or not the block is being edited.
+                IconButton(
+                  icon: const Icon(Icons.auto_awesome, size: 14),
+                  visualDensity: VisualDensity.compact,
+                  color: Theme.of(context).colorScheme.primary,
+                  tooltip: source.trim().isEmpty
+                      ? 'Generate code with AI'
+                      : 'Rewrite code with AI',
+                  onPressed: _generateWithAi,
+                ),
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-            child: editing
-                ? Builder(builder: (context) {
-                    widget.app
-                        .setActiveEditor(_controller, widget.block, 'source');
-                    // Consume the click-point token the canvas set, once the
-                    // field exists — the caret lands where the click did
-                    // instead of wherever focus drops it ("it doesnt respect
-                    // click position").
-                    final want = widget.app.pendingCaretGlobal;
-                    if (want != null) {
-                      widget.app.pendingCaretGlobal = null;
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (!mounted) return;
-                        final at = _offsetAtGlobal(want);
-                        if (at != null) {
-                          _controller.selection =
-                              TextSelection.collapsed(offset: at);
-                        }
-                      });
-                    }
-                    return Focus(
-                      onKeyEvent: _onKey,
-                      child: TextField(
-                    controller: _controller,
-                    focusNode: _focus..requestFocus(),
-                    maxLines: null,
-                    style: mono,
-                    // Two halves of one behaviour: with a selection, typing (
-                    // WRAPS it (same formatter as every other field); with
-                    // none, CodeTypingFormatter pairs, steps over a closer
-                    // and indents after Enter. Order matters — the wrap
-                    // formatter runs first and the pairing one then sees a
-                    // selection it must keep its hands off.
-                    inputFormatters: [
-                      const WrapSelectionFormatter(
-                          pairs: WrapSelectionFormatter.bracketPairs,
-                          autoCloseFences: false),
-                      CodeTypingFormatter(lang),
-                    ],
-                    decoration: OnoteInput.bare.copyWith(
-                        hintText: lang.lineComment.isEmpty
-                            ? 'code'
-                            : '${lang.lineComment} code'),
-                    onChanged: (v) {
-                      if (!_undoPushed) {
-                        widget.app.pushUndo();
-                        _undoPushed = true;
-                      }
-                      final was =
-                          widget.block.content['source'] as String? ?? '';
-                      widget.block.content['source'] = v;
-                      _autoDetect(was, v);
-                      widget.block.updatedAt = nowMs();
-                      widget.app.markDirty();
-                    },
-                  ),
-                    );
-                  })
-                // Selectable WITHOUT entering the editor — drag highlights,
-                // Ctrl+C copies, exactly like a text block's body. A plain
-                // tap still opens the editor (with the caret at the tap),
-                // via onTap below; the press point is caught by the
-                // Listener because SelectableText's own tap details don't
-                // surface a global position.
-                : Listener(
-                    onPointerDown: (e) => _readPressGlobal = e.position,
-                    child: SelectableText.rich(
-                      TextSpan(
-                        style: mono,
-                        children: source.isEmpty
-                            ? [const TextSpan(text: ' ')]
-                            : highlightCode(source, lang.id, dark),
-                      ),
-                      onTap: () {
-                        widget.app.pendingCaretGlobal = _readPressGlobal;
-                        widget.app.select(widget.block.id, edit: true);
-                      },
-                    ),
-                  ),
-          ),
+          _codeArea(context, mono, source),
           ..._outputPane(context, mono, dark),
         ],
       ),
+    );
+  }
+
+  /// The editor (or the read-only, selectable view). When the user has given
+  /// the block a fixed height (dragged its corner/edge), it fills that height
+  /// and scrolls; otherwise it grows with the code, as before.
+  Widget _codeArea(BuildContext context, TextStyle mono, String source) {
+    final lang = _language;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final field = Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+      child: editing
+          ? Builder(builder: (context) {
+              widget.app.setActiveEditor(_controller, widget.block, 'source');
+              // Consume the click-point token the canvas set, once the
+              // field exists — the caret lands where the click did
+              // instead of wherever focus drops it ("it doesnt respect
+              // click position").
+              final want = widget.app.pendingCaretGlobal;
+              if (want != null) {
+                widget.app.pendingCaretGlobal = null;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!mounted) return;
+                  final at = _offsetAtGlobal(want);
+                  if (at != null) {
+                    _controller.selection = TextSelection.collapsed(offset: at);
+                  }
+                });
+              }
+              return Focus(
+                onKeyEvent: _onKey,
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focus..requestFocus(),
+                  maxLines: null,
+                  style: mono,
+                  // Two halves of one behaviour: with a selection, typing (
+                  // WRAPS it (same formatter as every other field); with
+                  // none, CodeTypingFormatter pairs, steps over a closer
+                  // and indents after Enter. Order matters — the wrap
+                  // formatter runs first and the pairing one then sees a
+                  // selection it must keep its hands off.
+                  inputFormatters: [
+                    const WrapSelectionFormatter(
+                        pairs: WrapSelectionFormatter.bracketPairs,
+                        autoCloseFences: false),
+                    CodeTypingFormatter(lang),
+                  ],
+                  decoration: OnoteInput.bare.copyWith(
+                      hintText: lang.lineComment.isEmpty
+                          ? 'code'
+                          : '${lang.lineComment} code'),
+                  onChanged: (v) {
+                    if (!_undoPushed) {
+                      widget.app.pushUndo();
+                      _undoPushed = true;
+                    }
+                    final was = widget.block.content['source'] as String? ?? '';
+                    widget.block.content['source'] = v;
+                    _autoDetect(was, v);
+                    widget.block.updatedAt = nowMs();
+                    widget.app.markDirty();
+                  },
+                ),
+              );
+            })
+          // Selectable WITHOUT entering the editor — drag highlights,
+          // Ctrl+C copies, exactly like a text block's body. A plain
+          // tap still opens the editor (with the caret at the tap),
+          // via onTap below; the press point is caught by the
+          // Listener because SelectableText's own tap details don't
+          // surface a global position.
+          : Listener(
+              onPointerDown: (e) => _readPressGlobal = e.position,
+              child: SelectableText.rich(
+                TextSpan(
+                  style: mono,
+                  children: source.isEmpty
+                      ? [const TextSpan(text: ' ')]
+                      : highlightCode(source, lang.id, dark),
+                ),
+                onTap: () {
+                  widget.app.pendingCaretGlobal = _readPressGlobal;
+                  widget.app.select(widget.block.id, edit: true);
+                },
+              ),
+            ),
+    );
+    // A height the user set by dragging: fill it and scroll. Left auto (null)
+    // it grows with the code, exactly as before.
+    if (widget.block.h == null) return field;
+    return Expanded(
+      child: SingleChildScrollView(child: field),
     );
   }
 
@@ -327,13 +374,12 @@ class _CodeBlockViewState extends State<CodeBlockView> {
   List<Widget> _outputPane(BuildContext context, TextStyle mono, bool dark) {
     final out = CodeOutput.fromJson(widget.block.content['output']);
     if (out == null) return const [];
-    final headerStyle = mono.copyWith(
-        fontSize: 12, fontWeight: FontWeight.w600);
+    final headerStyle =
+        mono.copyWith(fontSize: 12, fontWeight: FontWeight.w600);
     final cellStyle = mono.copyWith(fontSize: 12);
     return [
       Divider(
-          height: 1,
-          color: dark ? OnoteColors.night300 : OnoteColors.paper300),
+          height: 1, color: dark ? OnoteColors.night300 : OnoteColors.paper300),
       Padding(
         padding: const EdgeInsets.fromLTRB(10, 2, 4, 6),
         child: Column(
@@ -362,8 +408,7 @@ class _CodeBlockViewState extends State<CodeBlockView> {
                 child: Table(
                   defaultColumnWidth: const IntrinsicColumnWidth(),
                   border: TableBorder.all(
-                      color:
-                          dark ? OnoteColors.night300 : OnoteColors.paper300,
+                      color: dark ? OnoteColors.night300 : OnoteColors.paper300,
                       width: .5),
                   children: [
                     for (var r = 0; r < out.cells!.length; r++)
@@ -526,8 +571,8 @@ class _CodeBlockViewState extends State<CodeBlockView> {
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.play_arrow, size: 11, color: c),
         Text('Run',
-            style: TextStyle(
-                fontSize: 10, fontWeight: FontWeight.w600, color: c)),
+            style:
+                TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: c)),
       ]),
     );
   }
