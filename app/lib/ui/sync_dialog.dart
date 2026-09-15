@@ -53,7 +53,7 @@ String _ago(DateTime? t, String absent, String label) {
 }
 
 /// The foldable halves of the dialog.
-enum _Pane { git, mirrors, storage }
+enum _Pane { git, push, mirrors, storage }
 
 /// A section header that stands on its own, and its contents when opened.
 ///
@@ -218,8 +218,7 @@ class _SyncDialogState extends State<_SyncDialog> {
     final dir = await getDirectoryPath(
         confirmButtonText: backup ? 'Back up here' : 'Mirror here');
     if (dir == null || !mounted) return;
-    app.addMirror(
-        nb, MirrorTarget(path: dir, keepVersions: backup ? 10 : 0));
+    app.addMirror(nb, MirrorTarget(path: dir, keepVersions: backup ? 10 : 0));
     setState(() {});
   }
 
@@ -233,7 +232,8 @@ class _SyncDialogState extends State<_SyncDialog> {
 
     return AlertDialog(
       title: Row(children: [
-        Icon(status.icon, size: 18, color: status.isSynced ? OnoteColors.success : null),
+        Icon(status.icon,
+            size: 18, color: status.isSynced ? OnoteColors.success : null),
         const SizedBox(width: 8),
         Text(status.isSynced ? 'Syncing' : 'Sync this notebook'),
       ]),
@@ -254,187 +254,200 @@ class _SyncDialogState extends State<_SyncDialog> {
           child: ListenableBuilder(
             listenable: app,
             builder: (context, _) => SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // `isFolderSynced`, not `isSynced`. This card is about a FOLDER
-              // — it names one, and it offers "move it elsewhere" — and since
-              // git started counting as synced, a git-only notebook reached it
-              // with no folder to name. Same null assertion that took the
-              // status chip down.
-              if (status.isFolderSynced) _linkedCard(status, path),
-              if (status.isFolderSynced) const SizedBox(height: 4),
-              _containerInCloudCard(),
-              if (!status.isFolderSynced)
-                const Text(
-                  'Slate syncs through a folder your cloud already keeps in '
-                  'step — no account, no sign-in, and no access to the rest of '
-                  'your Drive. Each device only ever writes its own file, so '
-                  'your devices can never produce a conflicting copy.',
-                  style: TextStyle(fontSize: 13, height: 1.45),
-                ),
-              if (showChooser) ...[
-                const Divider(height: 22),
-                if (_changing)
-                  const Text('Move it somewhere else',
-                      style:
-                          TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                if (_folders.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4),
-                    child: Text(
-                      'No cloud folders detected. If you use Drive, OneDrive, '
-                      'iCloud, Dropbox, Nextcloud or Syncthing, install its '
-                      'desktop app first — or pick any folder below (a network '
-                      'share or a USB drive works too).',
-                      style: TextStyle(fontSize: 12, height: 1.4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // `isFolderSynced`, not `isSynced`. This card is about a FOLDER
+                  // — it names one, and it offers "move it elsewhere" — and since
+                  // git started counting as synced, a git-only notebook reached it
+                  // with no folder to name. Same null assertion that took the
+                  // status chip down.
+                  if (status.isFolderSynced) _linkedCard(status, path),
+                  if (status.isFolderSynced) const SizedBox(height: 4),
+                  _containerInCloudCard(),
+                  if (!status.isFolderSynced)
+                    const Text(
+                      'Slate syncs through a folder your cloud already keeps in '
+                      'step — no account, no sign-in, and no access to the rest of '
+                      'your Drive. Each device only ever writes its own file, so '
+                      'your devices can never produce a conflicting copy.',
+                      style: TextStyle(fontSize: 13, height: 1.45),
                     ),
-                  )
-                else
-                  ..._folders.map(_folderTile),
-                const SizedBox(height: 6),
-                Row(children: [
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : _chooseFolder,
-                    icon: const Icon(Icons.folder_open, size: 18),
-                    label: _spinning(_busyButton == _chooserButton,
-                        const Text('Choose a folder…')),
-                  ),
-                  if (_changing) ...[
-                    const SizedBox(width: 8),
-                    TextButton(
-                        onPressed: () => setState(() => _changing = false),
-                        child: const Text('Cancel')),
+                  if (showChooser) ...[
+                    const Divider(height: 22),
+                    if (_changing)
+                      const Text('Move it somewhere else',
+                          style: TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                    if (_folders.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          'No cloud folders detected. If you use Drive, OneDrive, '
+                          'iCloud, Dropbox, Nextcloud or Syncthing, install its '
+                          'desktop app first — or pick any folder below (a network '
+                          'share or a USB drive works too).',
+                          style: TextStyle(fontSize: 12, height: 1.4),
+                        ),
+                      )
+                    else
+                      ..._folders.map(_folderTile),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : _chooseFolder,
+                        icon: const Icon(Icons.folder_open, size: 18),
+                        label: _spinning(_busyButton == _chooserButton,
+                            const Text('Choose a folder…')),
+                      ),
+                      if (_changing) ...[
+                        const SizedBox(width: 8),
+                        TextButton(
+                            onPressed: () => setState(() => _changing = false),
+                            child: const Text('Cancel')),
+                      ],
+                    ]),
                   ],
-                ]),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!,
-                    style:
-                        const TextStyle(fontSize: 12, color: OnoteColors.danger)),
-              ],
-              const SizedBox(height: 12),
-              _ComputerNameField(app: app, notebookId: nb),
-              // ── The rest, folded away until asked for.
-              //
-              // These four are separate questions — "where are the files",
-              // "keep it in git", "make me copies", "check for changes on my
-              // own" — and only one of them is ever the reason someone opened
-              // this. Stacked open they were four screens of controls and
-              // prose above the fold, which is what "very cluttered and hard
-              // to read" describes. One opens at a time.
-              const Divider(height: 22),
-              _Disclosure(
-                icon: Icons.commit,
-                title: 'Sync with git',
-                // The subtitle answers the question without opening anything,
-                // which is most of what a collapsed section is for.
-                subtitle: app.gitEnabled
-                    ? (app.gitRemote == null
-                        ? 'On — this computer only'
-                        : SyncStatus(
-                                folder: null,
-                                devices: 1,
-                                mirrors: 0,
-                                gitRemote: app.gitRemote)
-                            .gitLabel!)
-                    : 'Off',
-                open: _open == _Pane.git,
-                onTap: () => setState(
-                    () => _open = _open == _Pane.git ? null : _Pane.git),
-                child: _GitSection(app: app),
-              ),
-              _Disclosure(
-                icon: Icons.folder_copy_outlined,
-                title: 'Extra copies',
-                subtitle: app.mirrorsFor(nb).isEmpty
-                    ? 'None'
-                    : '${app.mirrorsFor(nb).length} configured',
-                open: _open == _Pane.mirrors,
-                onTap: () => setState(() =>
-                    _open = _open == _Pane.mirrors ? null : _Pane.mirrors),
-                child: _mirrorSection(),
-              ),
-              _Disclosure(
-                icon: Icons.sd_storage_outlined,
-                title: 'Where the files are',
-                subtitle: 'Sizes, paths and leftovers',
-                open: _open == _Pane.storage,
-                onTap: () => setState(() =>
-                    _open = _open == _Pane.storage ? null : _Pane.storage),
-                child: _StorageSection(app: app, notebookId: nb),
-              ),
-              const Divider(height: 12),
-              SwitchListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                value: app.autoSync,
-                onChanged: _busy
-                    ? null
-                    : (v) {
-                        // setAutoSync notifies listeners itself; wrapping it in
-                        // setState would notify during a build.
-                        app.setAutoSync(v);
-                        setState(() {});
-                      },
-                title: const Text('Pull changes automatically',
-                    style: TextStyle(fontSize: 13)),
-                subtitle: const Text(
-                    "Watches for other devices' changes and folds them in.",
-                    style: TextStyle(fontSize: 11)),
-              ),
-              // **Say whether it is actually working.**
-              //
-              // Reported twice: "it seems like that change doesnt really ever
-              // get reflected on the other machine". Whether the watcher was
-              // armed, whether anything had arrived, and whether a pull had
-              // run were all invisible — so the only way to diagnose it was to
-              // press the button and guess. A switch that claims to watch
-              // should be able to say that it is.
-              Padding(
-                padding: const EdgeInsets.only(left: 2, bottom: 4),
-                child: Row(children: [
-                  Icon(
-                      app.watchingForChanges
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                      size: 14,
-                      color: app.watchingForChanges
-                          ? OnoteColors.success
-                          : OnoteColors.danger),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      app.watchingForChanges
-                          ? 'Watching this notebook. '
-                              '${_ago(app.lastForeignSignalAt, 'Nothing has arrived yet.', 'Last change seen')}'
-                              '${app.lastPullAt == null ? '' : ' ${_ago(app.lastPullAt, '', 'Last pull')} (${app.lastSyncPull} changes).'}'
-                          : 'NOT watching — ${app.notWatchingBecause}.',
-                      style: TextStyle(
-                          fontSize: 11,
-                          height: 1.35,
-                          color: context.surfaces.textSecondary),
-                    ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(_error!,
+                        style: const TextStyle(
+                            fontSize: 12, color: OnoteColors.danger)),
+                  ],
+                  const SizedBox(height: 12),
+                  _ComputerNameField(app: app, notebookId: nb),
+                  // ── The rest, folded away until asked for.
+                  //
+                  // These four are separate questions — "where are the files",
+                  // "keep it in git", "make me copies", "check for changes on my
+                  // own" — and only one of them is ever the reason someone opened
+                  // this. Stacked open they were four screens of controls and
+                  // prose above the fold, which is what "very cluttered and hard
+                  // to read" describes. One opens at a time.
+                  const Divider(height: 22),
+                  _Disclosure(
+                    icon: Icons.commit,
+                    title: 'Sync with git',
+                    // The subtitle answers the question without opening anything,
+                    // which is most of what a collapsed section is for.
+                    subtitle: app.gitEnabled
+                        ? (app.gitRemote == null
+                            ? 'On — this computer only'
+                            : SyncStatus(
+                                    folder: null,
+                                    devices: 1,
+                                    mirrors: 0,
+                                    gitRemote: app.gitRemote)
+                                .gitLabel!)
+                        : 'Off',
+                    open: _open == _Pane.git,
+                    onTap: () => setState(
+                        () => _open = _open == _Pane.git ? null : _Pane.git),
+                    child: _GitSection(app: app),
                   ),
-                ]),
+                  _Disclosure(
+                    icon: Icons.cloud_upload_outlined,
+                    title: 'Push pages to GitHub',
+                    subtitle: app.pushRepo == null
+                        ? 'Off'
+                        : (app.githubConnected
+                            ? 'Connected — ${repoFullNameFromRemote(app.pushRepo!) ?? app.pushRepo!}'
+                            : 'Connected (sign in to push)'),
+                    open: _open == _Pane.push,
+                    onTap: () => setState(
+                        () => _open = _open == _Pane.push ? null : _Pane.push),
+                    child: _PushSection(app: app),
+                  ),
+                  _Disclosure(
+                    icon: Icons.folder_copy_outlined,
+                    title: 'Extra copies',
+                    subtitle: app.mirrorsFor(nb).isEmpty
+                        ? 'None'
+                        : '${app.mirrorsFor(nb).length} configured',
+                    open: _open == _Pane.mirrors,
+                    onTap: () => setState(() =>
+                        _open = _open == _Pane.mirrors ? null : _Pane.mirrors),
+                    child: _mirrorSection(),
+                  ),
+                  _Disclosure(
+                    icon: Icons.sd_storage_outlined,
+                    title: 'Where the files are',
+                    subtitle: 'Sizes, paths and leftovers',
+                    open: _open == _Pane.storage,
+                    onTap: () => setState(() =>
+                        _open = _open == _Pane.storage ? null : _Pane.storage),
+                    child: _StorageSection(app: app, notebookId: nb),
+                  ),
+                  const Divider(height: 12),
+                  SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: app.autoSync,
+                    onChanged: _busy
+                        ? null
+                        : (v) {
+                            // setAutoSync notifies listeners itself; wrapping it in
+                            // setState would notify during a build.
+                            app.setAutoSync(v);
+                            setState(() {});
+                          },
+                    title: const Text('Pull changes automatically',
+                        style: TextStyle(fontSize: 13)),
+                    subtitle: const Text(
+                        "Watches for other devices' changes and folds them in.",
+                        style: TextStyle(fontSize: 11)),
+                  ),
+                  // **Say whether it is actually working.**
+                  //
+                  // Reported twice: "it seems like that change doesnt really ever
+                  // get reflected on the other machine". Whether the watcher was
+                  // armed, whether anything had arrived, and whether a pull had
+                  // run were all invisible — so the only way to diagnose it was to
+                  // press the button and guess. A switch that claims to watch
+                  // should be able to say that it is.
+                  Padding(
+                    padding: const EdgeInsets.only(left: 2, bottom: 4),
+                    child: Row(children: [
+                      Icon(
+                          app.watchingForChanges
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: 14,
+                          color: app.watchingForChanges
+                              ? OnoteColors.success
+                              : OnoteColors.danger),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          app.watchingForChanges
+                              ? 'Watching this notebook. '
+                                  '${_ago(app.lastForeignSignalAt, 'Nothing has arrived yet.', 'Last change seen')}'
+                                  '${app.lastPullAt == null ? '' : ' ${_ago(app.lastPullAt, '', 'Last pull')} (${app.lastSyncPull} changes).'}'
+                              : 'NOT watching — ${app.notWatchingBecause}.',
+                          style: TextStyle(
+                              fontSize: 11,
+                              height: 1.35,
+                              color: context.surfaces.textSecondary),
+                        ),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 6),
+                  // The old version of this ended "Openote never talks to a
+                  // server itself … nothing is exposed to the network by
+                  // Openote". That was true when folder sync was the only route
+                  // and it stopped being true the moment git and the GitHub API
+                  // shipped. A privacy claim that has quietly become false is
+                  // worse than no claim at all.
+                  const Text(
+                    'Running your own server? Point Syncthing, Nextcloud, or an '
+                    'rsync job at the same folder — anything that copies files '
+                    'works.',
+                    style: TextStyle(fontSize: 12, height: 1.4),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              // The old version of this ended "Openote never talks to a
-              // server itself … nothing is exposed to the network by
-              // Openote". That was true when folder sync was the only route
-              // and it stopped being true the moment git and the GitHub API
-              // shipped. A privacy claim that has quietly become false is
-              // worse than no claim at all.
-              const Text(
-                'Running your own server? Point Syncthing, Nextcloud, or an '
-                'rsync job at the same folder — anything that copies files '
-                'works.',
-                style: TextStyle(fontSize: 12, height: 1.4),
-              ),
-            ],
-          ),
             ),
           ),
         ),
@@ -499,7 +512,8 @@ class _SyncDialogState extends State<_SyncDialog> {
                 size: 16, color: OnoteColors.danger),
             const SizedBox(width: 8),
             Expanded(
-              child: Text('This notebook keeps a working file in ${folder.name}',
+              child: Text(
+                  'This notebook keeps a working file in ${folder.name}',
                   style: OnoteType.uiStrong),
             ),
           ]),
@@ -609,14 +623,15 @@ class _SyncDialogState extends State<_SyncDialog> {
                 ? '${status.devices} devices have edited this notebook.'
                 : 'No other device has picked it up yet — install Slate '
                     'there and open it from the same folder.',
-            style:
-                const TextStyle(fontSize: 12, height: 1.35),
+            style: const TextStyle(fontSize: 12, height: 1.35),
           ),
           if (cloudCaveat(folder.kind) != null) ...[
             const SizedBox(height: 6),
             Text(cloudCaveat(folder.kind)!,
                 style: TextStyle(
-                    fontSize: 11, height: 1.35, color: context.surfaces.textSecondary)),
+                    fontSize: 11,
+                    height: 1.35,
+                    color: context.surfaces.textSecondary)),
           ],
           const SizedBox(height: 6),
           Row(children: [
@@ -624,7 +639,8 @@ class _SyncDialogState extends State<_SyncDialog> {
               TextButton.icon(
                 onPressed: () => PlatformOpen.file(p.dirname(path)),
                 icon: const Icon(Icons.folder_open, size: 16),
-                label: const Text('Open folder', style: TextStyle(fontSize: 12)),
+                label:
+                    const Text('Open folder', style: TextStyle(fontSize: 12)),
               ),
             TextButton.icon(
               onPressed: _busy ? null : () => setState(() => _changing = true),
@@ -664,7 +680,8 @@ class _SyncDialogState extends State<_SyncDialog> {
             visualDensity: VisualDensity.compact,
             leading: Icon(t.isBackup ? Icons.history : Icons.copy_all_outlined,
                 size: 18),
-            title: Text(p.basename(t.path), style: const TextStyle(fontSize: 13)),
+            title:
+                Text(p.basename(t.path), style: const TextStyle(fontSize: 13)),
             subtitle: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -683,7 +700,8 @@ class _SyncDialogState extends State<_SyncDialog> {
                   Text(
                     "Couldn't reach this the last time it tried — $why",
                     style: TextStyle(
-                        fontSize: 11, color: Theme.of(context).colorScheme.error),
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.error),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -841,7 +859,8 @@ class _StorageSectionState extends State<_StorageSection> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _row('Notes', s.containerPath, s.containerBytes,
-                    s.containerCloud, isContainer: true),
+                    s.containerCloud,
+                    isContainer: true),
                 const SizedBox(height: 6),
                 _row('Sync log', s.logPath, s.logBytes, s.logCloud,
                     missing: !s.logExists),
@@ -932,15 +951,15 @@ class _StorageSectionState extends State<_StorageSection> {
                                 : '${_bytes(_reclaimed!.freed)} reclaimed',
                 style: TextStyle(
                     fontSize: 12,
-                    color: _reclaimed?.ran == false ? OnoteColors.danger : null)),
+                    color:
+                        _reclaimed?.ran == false ? OnoteColors.danger : null)),
           ),
           if (_orphans == null)
             TextButton.icon(
-              onPressed: () => setState(
-                  () => _orphans = app.findOrphanFiles()),
+              onPressed: () => setState(() => _orphans = app.findOrphanFiles()),
               icon: const Icon(Icons.cleaning_services_outlined, size: 16),
-              label: const Text('Find leftovers…',
-                  style: TextStyle(fontSize: 12)),
+              label:
+                  const Text('Find leftovers…', style: TextStyle(fontSize: 12)),
             ),
         ]),
         // Converting handwriting is offered only when there is handwriting to
@@ -967,8 +986,7 @@ class _StorageSectionState extends State<_StorageSection> {
                         setState(() {
                           _converting = false;
                           _inkResult = r;
-                          _inkPages =
-                              app.inlineInkPageCount(widget.notebookId);
+                          _inkPages = app.inlineInkPageCount(widget.notebookId);
                           _storage = app.storageFor(widget.notebookId);
                         });
                       },
@@ -1397,8 +1415,8 @@ class _StorageSectionState extends State<_StorageSection> {
         icon: const Icon(Icons.folder_open, size: 16),
         visualDensity: VisualDensity.compact,
         tooltip: 'Open containing folder',
-        onPressed: () => PlatformOpen.file(
-            isContainer ? p.dirname(path) : path),
+        onPressed: () =>
+            PlatformOpen.file(isContainer ? p.dirname(path) : path),
       ),
     ]);
   }
@@ -1482,8 +1500,7 @@ class _StorageSectionState extends State<_StorageSection> {
                         if (!mounted) return;
                         setState(() {
                           _busy = false;
-                          _videos =
-                              app.findUnusedVideos(widget.notebookId);
+                          _videos = app.findUnusedVideos(widget.notebookId);
                           _storage = app.storageFor(widget.notebookId);
                         });
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -1507,20 +1524,21 @@ class _StorageSectionState extends State<_StorageSection> {
           final list = snap.data;
           if (list == null) {
             return Text('Looking…',
-                style:
-                    TextStyle(fontSize: 12, color: context.surfaces.textSecondary));
+                style: TextStyle(
+                    fontSize: 12, color: context.surfaces.textSecondary));
           }
           if (list.isEmpty) {
             return Text('No leftover notebook files found.',
-                style:
-                    TextStyle(fontSize: 12, color: context.surfaces.textSecondary));
+                style: TextStyle(
+                    fontSize: 12, color: context.surfaces.textSecondary));
           }
           final safe = list.where((o) => o.safeToDelete).toList();
           final safeBytes = safe.fold<int>(0, (a, o) => a + o.bytes);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${list.length} leftover file'
+              Text(
+                  '${list.length} leftover file'
                   '${list.length == 1 ? '' : 's'} nothing points at',
                   style: const TextStyle(
                       fontSize: 12, fontWeight: FontWeight.w600)),
@@ -1533,7 +1551,8 @@ class _StorageSectionState extends State<_StorageSection> {
                         size: 16, color: context.surfaces.textSecondary),
                     const SizedBox(width: 6),
                     Expanded(
-                      child: Text('${p.basename(o.path)}  ·  ${_bytes(o.bytes)}'
+                      child: Text(
+                          '${p.basename(o.path)}  ·  ${_bytes(o.bytes)}'
                           '${o.safeToDelete ? '' : '  ·  shared folder'}',
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 11)),
@@ -1549,7 +1568,9 @@ class _StorageSectionState extends State<_StorageSection> {
                 'Files in a shared folder are left alone — they may belong to '
                 'another device. Open the folder to review those yourself.',
                 style: TextStyle(
-                    fontSize: 11, height: 1.35, color: context.surfaces.textSecondary),
+                    fontSize: 11,
+                    height: 1.35,
+                    color: context.surfaces.textSecondary),
               ),
               if (safe.isNotEmpty)
                 TextButton.icon(
@@ -1565,8 +1586,7 @@ class _StorageSectionState extends State<_StorageSection> {
                             _storage = app.storageFor(widget.notebookId);
                           });
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content:
-                                  Text('Reclaimed ${_bytes(freed)}')));
+                              content: Text('Reclaimed ${_bytes(freed)}')));
                         },
                   icon: const Icon(Icons.delete_outline, size: 16),
                   label: Text(
@@ -1826,12 +1846,222 @@ class _GitSectionState extends State<_GitSection> {
                     'not configured, it will say so here rather than appear '
                     'to work.',
             style: TextStyle(
-                fontSize: 11, height: 1.4, color: context.surfaces.textSecondary),
+                fontSize: 11,
+                height: 1.4,
+                color: context.surfaces.textSecondary),
           ),
         ],
       ],
     );
   }
+}
+
+/// Connect a notebook to a repository as a **PDF push target** — the clean,
+/// "just connect, nothing more" flow the owner asked for.
+///
+/// Unlike "Sync with git" above, this does NOT sync the notebook's files. It
+/// only records which repo a page's PDFs should be pushed to (Export → Push
+/// this page to the repo). The repo stays empty until a page is pushed.
+class _PushSection extends StatefulWidget {
+  const _PushSection({required this.app});
+  final AppState app;
+
+  @override
+  State<_PushSection> createState() => _PushSectionState();
+}
+
+class _PushSectionState extends State<_PushSection> {
+  AppState get app => widget.app;
+  final _token = TextEditingController();
+  late final _name =
+      TextEditingController(text: repoNameFor(app.currentNotebook.title));
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _token.dispose();
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run(Future<String?> Function() fn) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final err = await fn();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = err;
+    });
+  }
+
+  Future<void> _chooseExisting() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final repos = await app.githubListRepos();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (repos == null) {
+      setState(() => _error = 'Could not load your repositories.');
+      return;
+    }
+    if (repos.isEmpty) {
+      setState(() => _error = 'You have no repositories yet. Create one.');
+      return;
+    }
+    final picked = await showOnoteDialog<GitHubRepo>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Choose a repository'),
+        children: [
+          SizedBox(
+            width: 400,
+            height: 340,
+            child: ListView.builder(
+              itemCount: repos.length,
+              itemBuilder: (_, i) => ListTile(
+                dense: true,
+                leading: Icon(
+                    repos[i].private ? Icons.lock_outline : Icons.public,
+                    size: 18),
+                title: Text(repos[i].fullName,
+                    style: const TextStyle(fontSize: 13)),
+                onTap: () => Navigator.pop(ctx, repos[i]),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    await _run(() => app.setPushRepo(picked.cloneUrl));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.surfaces;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 4),
+        Text(
+          'Connect this notebook to a repository, then push its pages there as '
+          'PDFs from Export → Push this page to the repo. Nothing is uploaded '
+          'until you push a page — no notes, no history.',
+          style: TextStyle(fontSize: 12, height: 1.4, color: s.textSecondary),
+        ),
+        const SizedBox(height: 10),
+        if (!app.githubConnected)
+          ..._connectAccount(context, s)
+        else if (app.pushRepo == null)
+          ..._chooseRepo(context, s)
+        else
+          ..._connected(context, s),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(_error!,
+                style: const TextStyle(
+                    fontSize: 12, height: 1.4, color: OnoteColors.danger)),
+          ),
+      ],
+    );
+  }
+
+  List<Widget> _connectAccount(BuildContext context, OnoteSurfaces s) => [
+        Text('First, connect your GitHub account.',
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: s.textPrimary)),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _token,
+          obscureText: true,
+          style: const TextStyle(fontSize: 12),
+          decoration: const InputDecoration(
+            isDense: true,
+            labelText: 'GitHub token',
+            hintText: 'Paste a token with the "repo" scope',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          FilledButton(
+            onPressed:
+                _busy ? null : () => _run(() => app.connectGitHub(_token.text)),
+            child: Text(_busy ? 'Connecting…' : 'Connect'),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: () => PlatformOpen.url(GitHubApi.tokenPage),
+            child: const Text('Get a token', style: TextStyle(fontSize: 12)),
+          ),
+        ]),
+      ];
+
+  List<Widget> _chooseRepo(BuildContext context, OnoteSurfaces s) => [
+        Text('Signed in as ${app.githubLogin}.',
+            style: TextStyle(fontSize: 12, color: s.textSecondary)),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _name,
+          style: const TextStyle(fontSize: 12),
+          decoration: const InputDecoration(
+            isDense: true,
+            labelText: 'New repository name',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          FilledButton.icon(
+            onPressed: _busy
+                ? null
+                : () => _run(() => app.createPushRepo(name: _name.text)),
+            icon: _busy
+                ? const SizedBox(
+                    width: 13,
+                    height: 13,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.add, size: 16),
+            label: const Text('Create repo', style: TextStyle(fontSize: 12)),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _chooseExisting,
+            icon: const Icon(Icons.folder_open_outlined, size: 16),
+            label:
+                const Text('Choose existing…', style: TextStyle(fontSize: 12)),
+          ),
+        ]),
+      ];
+
+  List<Widget> _connected(BuildContext context, OnoteSurfaces s) => [
+        Row(children: [
+          const Icon(Icons.check_circle, size: 18, color: Color(0xFF2E9E5B)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Pushing to ${repoFullNameFromRemote(app.pushRepo!) ?? app.pushRepo!}',
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(
+            onPressed: _busy ? null : () => setState(app.disconnectPush),
+            child: const Text('Disconnect', style: TextStyle(fontSize: 12)),
+          ),
+        ]),
+        const SizedBox(height: 2),
+        Text('Push a page from Export → Push this page to the repo.',
+            style: TextStyle(fontSize: 11.5, color: s.textSecondary)),
+      ];
 }
 
 /// Creating the repository, without leaving the app.
@@ -1856,8 +2086,8 @@ class _GitHubPublish extends StatefulWidget {
 }
 
 class _GitHubPublishState extends State<_GitHubPublish> {
-  late final TextEditingController _name =
-      TextEditingController(text: repoNameFor(widget.app.currentNotebook.title));
+  late final TextEditingController _name = TextEditingController(
+      text: repoNameFor(widget.app.currentNotebook.title));
   final TextEditingController _token = TextEditingController();
 
   /// Private unless the user says otherwise. These are somebody's notes, and a
@@ -1956,8 +2186,7 @@ class _GitHubPublishState extends State<_GitHubPublish> {
                 if (!mounted) return;
                 if (!opened) {
                   ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
-                    content: Text(
-                        "Slate couldn't open your browser. Go to "
+                    content: Text("Slate couldn't open your browser. Go to "
                         '${GitHubApi.tokenPage} and make a token there.'),
                     duration: const Duration(seconds: 10),
                   ));
@@ -1966,7 +2195,8 @@ class _GitHubPublishState extends State<_GitHubPublish> {
                 setState(() => _pasting = true);
               },
               icon: const Icon(Icons.open_in_new, size: 15),
-              label: const Text('Connect GitHub', style: TextStyle(fontSize: 12)),
+              label:
+                  const Text('Connect GitHub', style: TextStyle(fontSize: 12)),
             ),
           ],
           if (!connected && _pasting) ...[
@@ -2002,7 +2232,8 @@ class _GitHubPublishState extends State<_GitHubPublish> {
                     style: const TextStyle(fontSize: 12)),
               ),
               TextButton(
-                onPressed: _busy ? null : () => setState(() => _pasting = false),
+                onPressed:
+                    _busy ? null : () => setState(() => _pasting = false),
                 child: const Text('Cancel', style: TextStyle(fontSize: 12)),
               ),
             ]),
@@ -2022,8 +2253,10 @@ class _GitHubPublishState extends State<_GitHubPublish> {
               contentPadding: EdgeInsets.zero,
               controlAffinity: ListTileControlAffinity.leading,
               value: _private,
-              onChanged: _busy ? null : (v) => setState(() => _private = v ?? true),
-              title: const Text('Keep it private', style: TextStyle(fontSize: 12)),
+              onChanged:
+                  _busy ? null : (v) => setState(() => _private = v ?? true),
+              title:
+                  const Text('Keep it private', style: TextStyle(fontSize: 12)),
               subtitle: Text(
                 _private
                     ? 'Only you can see it'
@@ -2044,7 +2277,8 @@ class _GitHubPublishState extends State<_GitHubPublish> {
                         height: 13,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.add, size: 15),
-                label: Text(_busy || app.gitBusy ? 'Working…' : 'Create and push',
+                label: Text(
+                    _busy || app.gitBusy ? 'Working…' : 'Create and push',
                     style: const TextStyle(fontSize: 12)),
               ),
               const Spacer(),
@@ -2110,8 +2344,7 @@ class _ComputerNameFieldState extends State<_ComputerNameField> {
   }
 
   void _save() {
-    final ok =
-        widget.app.setThisComputerLabel(widget.notebookId, _c.text);
+    final ok = widget.app.setThisComputerLabel(widget.notebookId, _c.text);
     setState(() => _problem = ok
         ? null
         : "Slate couldn't save that name. Your notes are unaffected.");
@@ -2136,7 +2369,9 @@ class _ComputerNameFieldState extends State<_ComputerNameField> {
             'Changes you make are shown against this name, so everyone sharing '
             'the notebook can see it.',
             style: TextStyle(
-                fontSize: 11, height: 1.35, color: context.surfaces.textSecondary),
+                fontSize: 11,
+                height: 1.35,
+                color: context.surfaces.textSecondary),
           ),
           if (_problem != null) ...[
             const SizedBox(height: 4),

@@ -5,6 +5,10 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:openote/export/mindmap_pdf.dart';
+import 'package:openote/export/quiz_pdf.dart';
+import 'package:openote/mindmap/mindmap.dart';
+import 'package:openote/quiz/quiz_import.dart';
 import 'package:openote/sync/github_api.dart';
 
 void main() {
@@ -24,17 +28,45 @@ void main() {
     });
   });
 
-  group('whiteboardPdfPath', () {
-    test('nests a page under its section inside Whiteboards/', () {
-      expect(whiteboardPdfPath('Day 1', 'Session 1'),
-          'Whiteboards/Day 1/Session 1.pdf');
+  group('whiteboard paths', () {
+    test('a page gets its own folder under Whiteboards/', () {
+      expect(whiteboardDir('Day 1'), 'Whiteboards/Day 1');
     });
-    test('sanitises slashes and odd characters out of the segments', () {
-      expect(whiteboardPdfPath('A/B: notes', 'x*y'),
-          'Whiteboards/A-B- notes/x-y.pdf');
+    test('segments drop slashes and odd characters', () {
+      expect(whiteboardSegment('A/B: notes'), 'A-B- notes');
+      expect(whiteboardSegment('x*y'), 'x-y');
     });
     test('an empty title becomes Untitled', () {
-      expect(whiteboardPdfPath('', ''), 'Whiteboards/Untitled/Untitled.pdf');
+      expect(whiteboardSegment(''), 'Untitled');
+      expect(whiteboardDir(''), 'Whiteboards/Untitled');
+    });
+    test('a filename keeps its dot so an extension survives', () {
+      expect(whiteboardSegment('deck.pptx'), 'deck.pptx');
+    });
+  });
+
+  group('quiz + mind map PDFs', () {
+    test('a quiz becomes a real PDF with questions and answers', () async {
+      final bytes = await buildQuizPdf('Chapter 1', const [
+        QuizQuestion(
+            prompt: '2+2?',
+            options: ['3', '4', '5', '6'],
+            correct: 1,
+            explanation: 'Two and two.'),
+      ]);
+      expect(bytes.length, greaterThan(300));
+      // A valid PDF starts with the %PDF- signature.
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
+    });
+
+    test('a mind map outline becomes a real PDF', () async {
+      final root = MindNode(text: 'Centre', children: [
+        MindNode(text: 'Branch A', children: [MindNode(text: 'leaf')]),
+        MindNode(text: 'Branch B'),
+      ]);
+      final bytes = await buildMindmapOutlinePdf('Map', root);
+      expect(bytes.length, greaterThan(300));
+      expect(String.fromCharCodes(bytes.take(5)), '%PDF-');
     });
   });
 

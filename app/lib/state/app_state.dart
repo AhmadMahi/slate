@@ -653,6 +653,23 @@ class AppState extends ChangeNotifier
   String? _gitRemote;
   Timer? _gitDebounce;
 
+  // ── Per-notebook "push target" (PDF push, NOT content sync) ──────────────
+  //
+  // Separate from the op-log git sync above. Connecting a notebook to a repo
+  // here records ONLY where its pages should be pushed as PDFs (Export > Push
+  // this page to the repo); it never commits or pushes the notebook's own
+  // files — no ops, no blobs, no `.onote`. This is the "just connect, nothing
+  // more" the owner asked for: the repo stays empty until a page is pushed.
+  String _pushKey(String nb) => 'pushrepo:$nb';
+  String? _pushRepo;
+
+  /// The GitHub repo (clone URL) this notebook pushes page PDFs to, or null.
+  String? get pushRepo => _pushRepo;
+
+  /// Ready to push a page: a repo is chosen AND a GitHub account is connected.
+  bool get connectedForPush =>
+      (_pushRepo?.isNotEmpty ?? false) && githubConnected;
+
   /// A safety net over [scheduleGitSync]'s debounce: that timer is pushed back
   /// on every keystroke, so a long session with no pause would never fire.
   /// This fires on a fixed cadence regardless, and [syncGitNow] is a no-op when
@@ -704,12 +721,57 @@ class AppState extends ChangeNotifier
     _gitRemote = null;
     gitStatus = null;
     _gitDebounce?.cancel();
-    _gitHeartbeat?.cancel();
+    // The heartbeat is app-lifetime (started in init); do NOT cancel it here or
+    // it would die on the first notebook switch.
+    _pushRepo = null;
     if (notebookId == null) return;
+    final push = _repo.getSetting(_pushKey(notebookId!));
+    if (push is Map) _pushRepo = push['url'] as String?;
     final raw = _repo.getSetting(_gitKey(notebookId!));
     if (raw is! Map) return;
     _gitEnabled = raw['enabled'] == true;
     _gitRemote = raw['remote'] as String?;
+  }
+
+  /// Connect this notebook to an existing repo as its PDF push target — records
+  /// the URL and nothing else. Returns null on success, or a message.
+  Future<String?> setPushRepo(String cloneUrl) async {
+    if (notebookId == null) return 'Open a notebook first.';
+    final u = cloneUrl.trim();
+    if (u.isEmpty) return 'Pick a repository first.';
+    if (repoFullNameFromRemote(u) == null) {
+      return 'That is not a GitHub repository URL.';
+    }
+    _pushRepo = u;
+    _repo.setSetting(_pushKey(notebookId!), {'url': u});
+    notifyListeners();
+    return null;
+  }
+
+  /// Create a fresh private repo and set it as this notebook's push target. No
+  /// content is pushed; the repo stays empty until a page is pushed as PDF.
+  Future<String?> createPushRepo({String? name}) async {
+    if (!githubConnected) return 'Connect a GitHub account first.';
+    if (notebookId == null) return 'Open a notebook first.';
+    final made = await GitHubApi(_githubToken!, baseUrl: debugGitHubBase)
+        .createRepo(
+            name?.trim().isNotEmpty == true
+                ? repoNameFor(name!)
+                : repoNameFor(currentNotebook.title),
+            private: true,
+            description: 'Slate whiteboards — ${currentNotebook.title}');
+    if (!made.ok) return made.error;
+    _pushRepo = made.cloneUrl;
+    _repo.setSetting(_pushKey(notebookId!), {'url': _pushRepo});
+    notifyListeners();
+    return null;
+  }
+
+  /// Forget this notebook's push target (does not touch the repo on GitHub).
+  void disconnectPush() {
+    _pushRepo = null;
+    if (notebookId != null) _repo.setSetting(_pushKey(notebookId!), null);
+    notifyListeners();
   }
 
   Future<void> setGitEnabled(bool on, {String? remote}) async {

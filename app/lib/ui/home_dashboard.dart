@@ -139,11 +139,12 @@ class _HomeDashboardState extends State<HomeDashboard> {
     final choice = await showOnoteDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Sync this notebook to GitHub?'),
+        title: const Text('Connect this notebook to a repo?'),
         content: const Text(
-          'Back this notebook up to a repository so its notes sync '
-          'automatically. You can create a new repo or use one you already '
-          'have. You can also do this later from Sync.',
+          'Connect this notebook to a GitHub repository so you can push its '
+          'pages there as PDFs (Export → Push this page to the repo). Nothing '
+          'is uploaded until you push a page. You can also do this later from '
+          'Sync.',
           style: TextStyle(fontSize: 13, height: 1.4),
         ),
         actions: [
@@ -165,9 +166,9 @@ class _HomeDashboardState extends State<HomeDashboard> {
     if (choice == null || choice == 'skip' || !context.mounted) return;
     if (choice == 'new') {
       final err = await _withSpinner(
-          context, 'Creating the repository…', () => app.createGitHubRepo());
+          context, 'Creating the repository…', () => app.createPushRepo());
       if (!context.mounted) return;
-      _report(context, err, 'Notebook is now syncing to a new repository.');
+      _report(context, err, 'Connected. Push pages from Export.');
     } else if (choice == 'existing') {
       await _pickExistingRepo(context);
     }
@@ -212,9 +213,10 @@ class _HomeDashboardState extends State<HomeDashboard> {
     );
     if (picked == null || !context.mounted) return;
     final err = await _withSpinner(context, 'Connecting to ${picked.fullName}…',
-        () => app.connectNotebookToExistingRepo(picked.cloneUrl));
+        () => app.setPushRepo(picked.cloneUrl));
     if (!context.mounted) return;
-    _report(context, err, 'Notebook is now syncing to ${picked.fullName}.');
+    _report(context, err,
+        'Connected to ${picked.fullName}. Push pages from Export.');
   }
 
   /// Run [fn] behind a modal spinner; returns its error message (or null).

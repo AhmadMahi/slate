@@ -262,23 +262,23 @@ String? repoFullNameFromRemote(String url) {
   return '${m.group(1)}/${m.group(2)}';
 }
 
-/// Where a page's exported PDF lives in the repo: a `Whiteboards/` folder, one
-/// sub-folder per section, one PDF per page — so re-pushing a session updates
-/// the same file instead of piling up copies.
-String whiteboardPdfPath(String section, String page) {
-  String seg(String s) {
-    final c = s
-        .trim()
-        .replaceAll(RegExp(r'[^A-Za-z0-9._ -]+'), '-')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .replaceAll(RegExp(r'-{2,}'), '-')
-        .replaceAll(RegExp(r'^[-.]+|[-.]+$'), '')
-        .trim();
-    return c.isEmpty ? 'Untitled' : c;
-  }
-
-  return 'Whiteboards/${seg(section)}/${seg(page)}.pdf';
+/// A title turned into a path-safe segment: letters, digits, spaces and
+/// `. _ -` kept; everything else folded to a hyphen; never empty.
+String whiteboardSegment(String s) {
+  final c = s
+      .trim()
+      .replaceAll(RegExp(r'[^A-Za-z0-9._ -]+'), '-')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll(RegExp(r'-{2,}'), '-')
+      .replaceAll(RegExp(r'^[-.]+|[-.]+$'), '')
+      .trim();
+  return c.isEmpty ? 'Untitled' : c;
 }
+
+/// A page's own folder in the repo: `Whiteboards/<page>` — everything pushed for
+/// that page (its PDF, its mind maps, quizzes, files and an images/ folder)
+/// lives inside, so a session is one tidy folder.
+String whiteboardDir(String page) => 'Whiteboards/${whiteboardSegment(page)}';
 
 /// A repository name GitHub will accept, derived from a notebook title.
 ///
