@@ -269,6 +269,13 @@ A small chat for quick questions while you work.
 
 Slate is local-first; sync is optional and needs no Slate account.
 
+- **Back up every notebook to one repo.** Settings → Connections → **Sync all
+  notebooks**: connect GitHub, then turn on backup. Slate keeps *every* notebook
+  in a single private repository, one folder per notebook, in clean readable form
+  (Markdown, images and structure — no internal clutter). It backs up
+  automatically as you work, when you make a new notebook, and on a schedule. It
+  is a one-way mirror (it uploads what is here and never changes your notebooks),
+  and deleting a notebook asks whether to remove it from the backup too.
 - **Folder sync.** Point a notebook at any folder your device already syncs
   (Google Drive, OneDrive, Dropbox, iCloud Drive, Syncthing, a NAS…). Slate's
   storage is an append-only, one-writer-per-device log, so two devices editing

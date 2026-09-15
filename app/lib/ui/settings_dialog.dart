@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import '../theme/onote_theme.dart';
 import '../update/app_update.dart';
 import 'ai_provider_dialog.dart';
+import 'central_sync_dialog.dart';
 import 'mcp_dialog.dart';
 import 'color_picker.dart' show ShortcutField;
 import 'onote_dialog.dart';
@@ -461,6 +462,13 @@ class _SettingsDialogState extends State<_SettingsDialog> {
             'Sync',
             'Back up and share this notebook — GitHub or a folder.',
             () => showSyncDialog(context, app)),
+        _door(
+            Icons.cloud_sync_outlined,
+            'Sync all notebooks',
+            app.central.enabled
+                ? 'On — every notebook backs up to ${app.central.fullName ?? 'GitHub'}.'
+                : 'Back up every notebook to one GitHub repo.',
+            () => showCentralSyncDialog(context, app)),
         _door(
             Icons.smart_toy_outlined,
             'AI access',

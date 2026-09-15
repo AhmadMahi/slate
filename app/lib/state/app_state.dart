@@ -38,6 +38,7 @@ import '../ink/ink_codec.dart';
 import '../ink/ink_storage.dart';
 import '../sync/materializer.dart';
 import '../sync/git_sync.dart';
+import '../sync/central_sync.dart';
 import '../editor/list_editing.dart';
 import '../markdown/md_syntax.dart';
 import '../api/mcp_connect.dart';
@@ -307,6 +308,14 @@ class AppState extends ChangeNotifier
   /// Bytes of a blob in the current notebook, or null.
   Uint8List? blob(String hash) =>
       notebookId == null ? null : _repo.getBlob(notebookId!, hash);
+
+  /// Bytes of a blob in ANY notebook, or null — for reading a notebook that is
+  /// not the open one (the central backup materializes every notebook).
+  Uint8List? blobOf(String nb, String hash) => _repo.getBlob(nb, hash);
+
+  /// The app's on-disk workspace root, where the central-backup mirror clone is
+  /// kept (beside the notebook containers).
+  String get workspaceDirPath => _repo.workspaceDir.path;
 
   /// Store bytes in the current notebook, returning the content hash.
   String addBlob(Uint8List bytes, String mime) =>
@@ -686,6 +695,9 @@ class AppState extends ChangeNotifier
     _gitHeartbeat?.cancel();
     _gitHeartbeat = Timer.periodic(_gitHeartbeatInterval, (_) {
       if (_gitEnabled) syncGitNow();
+      // A periodic full sweep of the central backup, so notebooks other than
+      // the one being edited (and any the debounce missed) still get up.
+      if (central.enabled) unawaited(central.syncAll());
     });
   }
 
@@ -773,6 +785,23 @@ class AppState extends ChangeNotifier
     if (notebookId != null) _repo.setSetting(_pushKey(notebookId!), null);
     notifyListeners();
   }
+
+  // ── Central backup: all notebooks in one repo ────────────────────────────
+  //
+  // A one-way mirror that keeps every notebook in a single GitHub repo as clean
+  // folders. The engine lives in sync/central_sync.dart; these are the hooks it
+  // needs into app state and the thin wrappers the UI calls.
+  late final CentralSync central = CentralSync(this);
+
+  /// The GitHub token, for the sync engines that build their own [GitSync].
+  String? get githubTokenForSync => _githubToken;
+
+  /// Persist the central-backup settings (or clear them when disabled).
+  void persistCentralSync(Map<String, Object?>? json) =>
+      _repo.setSetting('centralSync', json);
+
+  /// Let the central engine repaint the settings UI as its status changes.
+  void notifyCentral() => notifyListeners();
 
   Future<void> setGitEnabled(bool on, {String? remote}) async {
     if (notebookId == null) return;
@@ -6621,6 +6650,7 @@ class AppState extends ChangeNotifier
     loadSyncRoots();
     _startSyncStatusPolling();
     _startGitHeartbeat();
+    central.load(_repo.getSetting('centralSync'));
     study.load();
     planner.load();
     // Armed only once state is restored: the scheduler's first act is to catch
@@ -6863,6 +6893,9 @@ class AppState extends ChangeNotifier
     await flushSave();
     final ref = await _repo.createNotebook(title);
     await selectNotebook(ref.id);
+    // Central backup, if on: a new notebook gets its folder in the one repo
+    // automatically, so "everything gets uploaded there" without a click.
+    if (central.enabled) unawaited(central.syncAll());
   }
 
   /// Whether the welcome flow has run for this workspace.
@@ -9783,6 +9816,9 @@ class AppState extends ChangeNotifier
     // to save and push changes." Every edit pushes the git timer out, so a
     // cycle runs once writing stops rather than in the middle of a sentence.
     scheduleGitSync();
+    // Central backup, if on: a debounced mirror of the open notebook, so the
+    // one repo stays current without a push per keystroke.
+    central.scheduleSync();
     notifyListeners();
   }
 
@@ -9992,6 +10028,7 @@ class AppState extends ChangeNotifier
     _saveDebounce?.cancel();
     _gitDebounce?.cancel();
     _gitHeartbeat?.cancel();
+    central.dispose();
     _housekeepingTimer?.cancel();
     try {
       await flushSave();
@@ -10064,6 +10101,7 @@ class AppState extends ChangeNotifier
     _syncStatusPoll?.cancel();
     _saveDebounce?.cancel();
     _gitHeartbeat?.cancel();
+    central.dispose();
     // The planner owns a Timer. A `late final` touched here is constructed
     // just to be torn down, which costs nothing; a live timer left behind
     // keeps the isolate awake, which does.

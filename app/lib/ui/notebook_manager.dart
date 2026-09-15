@@ -14,6 +14,38 @@ import 'sync_dot.dart';
 import '../theme/tokens.dart';
 import 'onote_dialog.dart';
 
+/// After deleting a notebook, offer to also remove it from the central GitHub
+/// backup (only when that backup is on). Deleting the copy on GitHub is the
+/// kind of thing to ask about, not do silently.
+Future<void> maybeRemoveFromBackup(
+    BuildContext context, AppState app, String nbId, String title) async {
+  if (!app.central.enabled) return;
+  final also = await showOnoteDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Also delete from the backup?'),
+      content: Text(
+        '"$title" was deleted here. Remove it from the GitHub backup too? '
+        'If you keep it, the backup still holds a copy.',
+        style: const TextStyle(fontSize: 13, height: 1.4),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep in backup')),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete from backup')),
+      ],
+    ),
+  );
+  if (also != true || !context.mounted) return;
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  final err = await app.central.removeNotebook(nbId, title);
+  messenger?.showSnackBar(
+      SnackBar(content: Text(err ?? 'Removed "$title" from the backup.')));
+}
+
 /// The notebook manager (style guide §7b) — the one place notebooks are managed.
 ///
 /// **Why a panel and not a pointer menu.** Management used to live in the
@@ -83,12 +115,16 @@ class _NotebookManagerState extends State<_NotebookManager> {
       _confirmDeleteId = null;
       _busyId = nb.id;
     });
+    final title = nb.title;
     final ok = await app.deleteNotebook(nb.id);
     if (!mounted) return;
     setState(() => _busyId = null);
     if (!ok) {
       _toast("That's your only notebook — create another one first.");
+      return;
     }
+    if (context.mounted)
+      await maybeRemoveFromBackup(context, app, nb.id, title);
   }
 
   Future<void> _duplicate(NotebookRef nb) async {
@@ -109,8 +145,8 @@ class _NotebookManagerState extends State<_NotebookManager> {
     }
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
 
   @override
   Widget build(BuildContext context) {
@@ -124,8 +160,8 @@ class _NotebookManagerState extends State<_NotebookManager> {
         const Text('Notebooks'),
         const Spacer(),
         Text('${notebooks.length} open',
-            style: TextStyle(
-                fontSize: 12, color: context.surfaces.textSecondary)),
+            style:
+                TextStyle(fontSize: 12, color: context.surfaces.textSecondary)),
       ]),
       contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       content: SizedBox(
@@ -186,7 +222,8 @@ class _NotebookManagerState extends State<_NotebookManager> {
           // Import expands INLINE rather than opening a popup menu: a popup here
           // would be the second kind of menu this panel exists to remove.
           TextButton.icon(
-            icon: Icon(_importOpen ? Icons.expand_less : Icons.download_outlined,
+            icon: Icon(
+                _importOpen ? Icons.expand_less : Icons.download_outlined,
                 size: 18),
             label: const Text('Import'),
             onPressed: () => setState(() => _importOpen = !_importOpen),
@@ -243,7 +280,8 @@ class _NotebookManagerState extends State<_NotebookManager> {
             label: Text(label, style: const TextStyle(fontSize: 13)),
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
-              final rootContext = Navigator.of(context, rootNavigator: true).context;
+              final rootContext =
+                  Navigator.of(context, rootNavigator: true).context;
               setState(() => _importOpen = false);
               // Close the panel first: the imports that still show a modal put
               // it over the shell, not over a list the user has finished with.
@@ -341,12 +379,17 @@ class _NotebookManagerState extends State<_NotebookManager> {
                             ? null
                             : () async {
                                 setState(() => _busyId = m.id);
+                                final title = m.title;
                                 await app.deleteNotebook(m.id);
                                 if (!mounted) return;
                                 setState(() {
                                   _busyId = null;
                                   _dupes.remove(g);
                                 });
+                                if (context.mounted) {
+                                  await maybeRemoveFromBackup(
+                                      context, app, m.id, title);
+                                }
                               },
                         child: const Text('Delete',
                             style: TextStyle(fontSize: 11)),
@@ -394,116 +437,122 @@ class _NotebookManagerState extends State<_NotebookManager> {
               await app.selectNotebook(nb.id);
             },
       child: Container(
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      decoration: BoxDecoration(
-        color: current
-            ? scheme.primary.withValues(alpha: .07)
-            : highlight
-                ? scheme.secondary.withValues(alpha: .10)
-                : null,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-            color: current ? scheme.primary.withValues(alpha: .35) : scheme.outline,
-            width: current ? 1.2 : .6),
-      ),
-      padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(current ? Icons.menu_book : Icons.menu_book_outlined,
-                  size: 18,
-                  color: current ? scheme.primary : context.surfaces.textSecondary),
-              const SizedBox(width: 6),
-              // Which of these is safe if this laptop dies — answerable by
-              // scanning the list, rather than by opening each one in turn.
-              SyncDot(app: app, notebookId: nb.id),
-              const SizedBox(width: 6),
-              Expanded(
-                child: renaming
-                    ? TextField(
-                        controller: _renameCtl,
-                        autofocus: true,
-                        style: const TextStyle(fontSize: 13),
-                        decoration: const InputDecoration(
-                            isDense: true, border: OutlineInputBorder()),
-                        onSubmitted: (_) => _commitRename(nb),
-                        onTapOutside: (_) => _commitRename(nb),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(nb.title,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: current
-                                      ? FontWeight.w600
-                                      : FontWeight.w400,
-                                  color: current ? scheme.primary : null)),
-                          Text(
-                              '${counts.sections} section${counts.sections == 1 ? '' : 's'} · '
-                              '${counts.pages} page${counts.pages == 1 ? '' : 's'}'
-                              '${current ? ' · open' : ''}',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: context.surfaces.textSecondary)),
-                        ],
-                      ),
-              ),
-              if (busy)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 10),
-                  child: SizedBox(
-                      width: 15,
-                      height: 15,
-                      child: CircularProgressIndicator(strokeWidth: 2)),
-                )
-              else if (!renaming && !confirming) ...[
-                if (!current)
-                  _act(Icons.open_in_new, 'Open this notebook', () async {
-                    Navigator.pop(context);
-                    await app.selectNotebook(nb.id);
-                  }),
-                _act(Icons.edit_outlined, 'Rename', () => _startRename(nb)),
-                _act(Icons.copy_all_outlined, 'Duplicate',
-                    () => _duplicate(nb)),
-                _act(Icons.delete_outline, 'Move to recycle bin',
-                    () => setState(() {
-                          _confirmDeleteId = nb.id;
-                          _renamingId = null;
-                        }),
-                    danger: true),
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        decoration: BoxDecoration(
+          color: current
+              ? scheme.primary.withValues(alpha: .07)
+              : highlight
+                  ? scheme.secondary.withValues(alpha: .10)
+                  : null,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+              color: current
+                  ? scheme.primary.withValues(alpha: .35)
+                  : scheme.outline,
+              width: current ? 1.2 : .6),
+        ),
+        padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(current ? Icons.menu_book : Icons.menu_book_outlined,
+                    size: 18,
+                    color: current
+                        ? scheme.primary
+                        : context.surfaces.textSecondary),
+                const SizedBox(width: 6),
+                // Which of these is safe if this laptop dies — answerable by
+                // scanning the list, rather than by opening each one in turn.
+                SyncDot(app: app, notebookId: nb.id),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: renaming
+                      ? TextField(
+                          controller: _renameCtl,
+                          autofocus: true,
+                          style: const TextStyle(fontSize: 13),
+                          decoration: const InputDecoration(
+                              isDense: true, border: OutlineInputBorder()),
+                          onSubmitted: (_) => _commitRename(nb),
+                          onTapOutside: (_) => _commitRename(nb),
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(nb.title,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: current
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    color: current ? scheme.primary : null)),
+                            Text(
+                                '${counts.sections} section${counts.sections == 1 ? '' : 's'} · '
+                                '${counts.pages} page${counts.pages == 1 ? '' : 's'}'
+                                '${current ? ' · open' : ''}',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: context.surfaces.textSecondary)),
+                          ],
+                        ),
+                ),
+                if (busy)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: SizedBox(
+                        width: 15,
+                        height: 15,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                else if (!renaming && !confirming) ...[
+                  if (!current)
+                    _act(Icons.open_in_new, 'Open this notebook', () async {
+                      Navigator.pop(context);
+                      await app.selectNotebook(nb.id);
+                    }),
+                  _act(Icons.edit_outlined, 'Rename', () => _startRename(nb)),
+                  _act(Icons.copy_all_outlined, 'Duplicate',
+                      () => _duplicate(nb)),
+                  _act(
+                      Icons.delete_outline,
+                      'Move to recycle bin',
+                      () => setState(() {
+                            _confirmDeleteId = nb.id;
+                            _renamingId = null;
+                          }),
+                      danger: true),
+                ],
               ],
-            ],
-          ),
-          // Inline confirm — no second dialog, and the list stays put so you can
-          // change your mind or delete another one straight after.
-          if (confirming)
-            Padding(
-              padding: const EdgeInsets.only(top: 8, left: 28),
-              child: Row(children: [
-                const Expanded(
-                  child: Text(
-                      'Move to the recycle bin? You can restore it from here.',
-                      style: TextStyle(fontSize: 13)),
-                ),
-                TextButton(
-                    onPressed: () => setState(() => _confirmDeleteId = null),
-                    child: const Text('Cancel')),
-                const SizedBox(width: 4),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: OnoteColors.danger,
-                      visualDensity: VisualDensity.compact),
-                  onPressed: () => _delete(nb),
-                  child: const Text('Delete'),
-                ),
-              ]),
             ),
-        ],
-      ),
+            // Inline confirm — no second dialog, and the list stays put so you can
+            // change your mind or delete another one straight after.
+            if (confirming)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, left: 28),
+                child: Row(children: [
+                  const Expanded(
+                    child: Text(
+                        'Move to the recycle bin? You can restore it from here.',
+                        style: TextStyle(fontSize: 13)),
+                  ),
+                  TextButton(
+                      onPressed: () => setState(() => _confirmDeleteId = null),
+                      child: const Text('Cancel')),
+                  const SizedBox(width: 4),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: OnoteColors.danger,
+                        visualDensity: VisualDensity.compact),
+                    onPressed: () => _delete(nb),
+                    child: const Text('Delete'),
+                  ),
+                ]),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -565,7 +614,9 @@ String _daysLeft(int deletedAt, int retentionDays) {
       Duration(days: retentionDays).inMilliseconds -
       DateTime.now().millisecondsSinceEpoch;
   final days = (remaining / const Duration(days: 1).inMilliseconds).ceil();
-  return days <= 0 ? 'Deletes soon' : 'Deletes in $days day${days == 1 ? '' : 's'}';
+  return days <= 0
+      ? 'Deletes soon'
+      : 'Deletes in $days day${days == 1 ? '' : 's'}';
 }
 
 Future<bool> _confirmPurge(BuildContext context, NotebookRef nb,
@@ -636,7 +687,8 @@ Future<void> importOneNotePackageWithFeedback(
 /// that outlives the caller — the root navigator's, not a dialog's — or the
 /// progress dialog silently does not appear. [messenger] carries the result
 /// even if that context has gone by the time the import finishes.
-Future<void> importOneNoteSectionWithFeedback(BuildContext context, AppState app,
+Future<void> importOneNoteSectionWithFeedback(
+    BuildContext context, AppState app,
     {ScaffoldMessengerState? messenger}) async {
   final m = messenger ?? ScaffoldMessenger.of(context);
   try {
