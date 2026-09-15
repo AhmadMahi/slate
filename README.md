@@ -273,8 +273,21 @@ Slate is local-first; sync is optional and needs no Slate account.
   (Google Drive, OneDrive, Dropbox, iCloud Drive, Syncthing, a NAS…). Slate's
   storage is an append-only, one-writer-per-device log, so two devices editing
   different pages merge cleanly with no duplicate files.
-- **GitHub sync.** Create and push a private repo from inside the app, and pull
-  it on another machine.
+- **GitHub sync.** Connect a GitHub account once (Settings → Connections →
+  Sync), then back a notebook with a repository. Once connected, notes sync
+  **automatically and incrementally** in the background — after a short pause in
+  typing, on a periodic safety-net timer during long sessions, and on close —
+  so it only ever sends what changed.
+- **Pick a repo when you create a notebook.** With GitHub connected, making a
+  new notebook offers **Create new repo** or **Choose an existing repo** right
+  after you name it, so the notebook is backed from the start.
+- **Push a page to the repo as PDF.** In a page's **Export** menu (when the
+  notebook is connected), **Push this page to the repo (PDF)** uploads just that
+  page's PDF into a `Whiteboards/<section>/<page>.pdf` folder in the same repo —
+  one click while teaching, no Save-as, no browser. It is manual, and
+  re-pushing a session updates the same file. This is separate from notes sync:
+  the PDF goes straight to the repo through GitHub's API and does not touch the
+  notebook's own sync.
 - **Mirrors.** Keep one-way backup copies of a notebook.
 
 Set these up in **Settings → Connections → Sync**.

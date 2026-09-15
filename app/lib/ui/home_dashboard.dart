@@ -8,10 +8,13 @@
 /// a number: a card shows what a notebook's own nodes say about it.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../model/models.dart';
 import '../state/app_state.dart';
+import '../sync/github_api.dart' show GitHubRepo;
 import '../theme/onote_theme.dart';
 import '../theme/tokens.dart';
 import 'notebook_manager.dart';
@@ -123,7 +126,138 @@ class _HomeDashboardState extends State<HomeDashboard> {
         title: 'New notebook', okLabel: 'Create', hintText: 'Notebook name');
     if (title == null || title.trim().isEmpty) return;
     await app.createNotebook(title.trim());
+    // If a GitHub account is connected, offer to back the new notebook with a
+    // repo right away — create one, or bind it to one they already have.
+    if (context.mounted && app.githubConnected) {
+      await _offerRepoForNewNotebook(context);
+    }
     app.openNotebookOverview();
+  }
+
+  /// Ask whether the just-created (and now open) notebook should sync to a repo.
+  Future<void> _offerRepoForNewNotebook(BuildContext context) async {
+    final choice = await showOnoteDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sync this notebook to GitHub?'),
+        content: const Text(
+          'Back this notebook up to a repository so its notes sync '
+          'automatically. You can create a new repo or use one you already '
+          'have. You can also do this later from Sync.',
+          style: TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'skip'),
+            child: const Text('Not now'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'existing'),
+            child: const Text('Choose existing…'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'new'),
+            child: const Text('Create new repo'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || choice == 'skip' || !context.mounted) return;
+    if (choice == 'new') {
+      final err = await _withSpinner(
+          context, 'Creating the repository…', () => app.createGitHubRepo());
+      if (!context.mounted) return;
+      _report(context, err, 'Notebook is now syncing to a new repository.');
+    } else if (choice == 'existing') {
+      await _pickExistingRepo(context);
+    }
+  }
+
+  /// List the user's repos and bind the notebook to the one they pick.
+  Future<void> _pickExistingRepo(BuildContext context) async {
+    final repos = await _withValue(
+        context, 'Loading your repositories…', app.githubListRepos);
+    if (!context.mounted) return;
+    if (repos == null) {
+      _report(context, 'Could not load your repositories.', '');
+      return;
+    }
+    if (repos.isEmpty) {
+      _report(context, 'You have no repositories yet. Create one instead.', '');
+      return;
+    }
+    final picked = await showOnoteDialog<GitHubRepo>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Choose a repository'),
+        children: [
+          SizedBox(
+            width: 420,
+            height: 360,
+            child: ListView.builder(
+              itemCount: repos.length,
+              itemBuilder: (_, i) => ListTile(
+                dense: true,
+                leading: Icon(
+                    repos[i].private ? Icons.lock_outline : Icons.public,
+                    size: 18),
+                title: Text(repos[i].fullName,
+                    style: const TextStyle(fontSize: 13)),
+                onTap: () => Navigator.pop(ctx, repos[i]),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (picked == null || !context.mounted) return;
+    final err = await _withSpinner(context, 'Connecting to ${picked.fullName}…',
+        () => app.connectNotebookToExistingRepo(picked.cloneUrl));
+    if (!context.mounted) return;
+    _report(context, err, 'Notebook is now syncing to ${picked.fullName}.');
+  }
+
+  /// Run [fn] behind a modal spinner; returns its error message (or null).
+  Future<String?> _withSpinner(
+      BuildContext context, String label, Future<String?> Function() fn) async {
+    return _withValue(context, label, fn);
+  }
+
+  /// Run [fn] behind a modal spinner and return its value.
+  Future<T?> _withValue<T>(
+      BuildContext context, String label, Future<T?> Function() fn) async {
+    var open = true;
+    unawaited(showOnoteDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(children: [
+          const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.6)),
+          const SizedBox(width: 16),
+          Expanded(child: Text(label)),
+        ]),
+      ),
+    ).then((_) => open = false));
+    T? out;
+    try {
+      out = await fn();
+    } finally {
+      if (open && context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+    return out;
+  }
+
+  void _report(BuildContext context, String? error, String success) {
+    final m = ScaffoldMessenger.maybeOf(context);
+    m?.showSnackBar(SnackBar(
+      content: Text(error ?? success),
+      duration: const Duration(seconds: 5),
+    ));
   }
 
   Future<void> _open(NotebookRef nb) async {

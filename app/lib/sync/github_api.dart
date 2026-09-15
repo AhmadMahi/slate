@@ -40,8 +40,7 @@ class GitHubApi {
   /// `repo` and nothing else. It is broad — GitHub's classic tokens have no
   /// narrower scope that can still create a repository — and the description
   /// says so rather than hoping nobody looks.
-  static const tokenPage =
-      'https://github.com/settings/tokens/new'
+  static const tokenPage = 'https://github.com/settings/tokens/new'
       '?scopes=repo&description=Openote%20notebook%20sync';
 
   Future<GitHubResult> _send(
@@ -106,11 +105,87 @@ class GitHubApi {
         return GitHubCreate.ok(
             j['clone_url'] as String, j['full_name'] as String);
       } catch (_) {
-        return const GitHubCreate.failed('GitHub sent a reply I could not read');
+        return const GitHubCreate.failed(
+            'GitHub sent a reply I could not read');
       }
     }
     return GitHubCreate.failed(_explain(r));
   }
+
+  /// The repositories this token's owner can push to, most-recently-updated
+  /// first — for "choose an existing repo" when connecting a notebook.
+  ///
+  /// One page of 100 is plenty for a person's own notebooks; a second is
+  /// fetched only if the first came back full, so the common case is one call.
+  Future<List<GitHubRepo>> listRepos() async {
+    final out = <GitHubRepo>[];
+    for (var page = 1; page <= 3; page++) {
+      final r = await _send(
+          'GET',
+          '/user/repos?per_page=100&sort=updated&affiliation=owner&page=$page',
+          null);
+      if (!r.ok) break;
+      List<dynamic> list;
+      try {
+        final j = jsonDecode(r.body);
+        if (j is! List) break;
+        list = j;
+      } catch (_) {
+        break;
+      }
+      for (final e in list) {
+        if (e is Map && e['full_name'] is String && e['clone_url'] is String) {
+          out.add(GitHubRepo(
+            fullName: e['full_name'] as String,
+            cloneUrl: e['clone_url'] as String,
+            private: e['private'] == true,
+          ));
+        }
+      }
+      if (list.length < 100) break;
+    }
+    return out;
+  }
+
+  /// Create or update one file in a repository, on its default branch, via the
+  /// Contents API — used to push an exported PDF into the notebook's repo
+  /// without touching the op-log sync at all.
+  ///
+  /// Omitting `branch` makes GitHub use the repository's own default branch, so
+  /// this works whether that is `main` or `master`. When the file already
+  /// exists its blob sha is read first and sent back, which is what turns a
+  /// second push of the same session into an UPDATE rather than a 409.
+  ///
+  /// Returns null on success, or a message to show.
+  Future<String?> putFile(
+    String fullName,
+    String path,
+    List<int> bytes,
+    String message,
+  ) async {
+    final encoded = _encodePath(path);
+    String? sha;
+    final head = await _send('GET', '/repos/$fullName/contents/$encoded', null);
+    if (head.ok) {
+      try {
+        sha = (jsonDecode(head.body) as Map)['sha'] as String?;
+      } catch (_) {
+        // A directory (list) or unreadable body: treat as "no existing file".
+      }
+    }
+    final r = await _send('PUT', '/repos/$fullName/contents/$encoded', {
+      'message': message,
+      'content': base64Encode(bytes),
+      if (sha != null) 'sha': sha,
+    });
+    if (r.ok) return null;
+    return _explain(r);
+  }
+
+  /// Encode a repo-relative path for the Contents API: each segment escaped,
+  /// but the `/` folder separators kept.
+  static String _encodePath(String path) =>
+      path.split('/').map(Uri.encodeComponent).join('/');
 
   /// Turn GitHub's answer into something worth reading.
   ///
@@ -162,6 +237,47 @@ class GitHubCreate {
   final String? fullName;
   final String? error;
   bool get ok => cloneUrl != null;
+}
+
+/// One of the user's repositories, for the "choose an existing repo" picker.
+class GitHubRepo {
+  const GitHubRepo({
+    required this.fullName,
+    required this.cloneUrl,
+    required this.private,
+  });
+  final String fullName; // "owner/name"
+  final String cloneUrl; // https://github.com/owner/name.git
+  final bool private;
+}
+
+/// The `owner/name` a clone/remote URL points at, or null if it is not a
+/// recognisable GitHub URL. Accepts both `https://github.com/o/n(.git)` and
+/// `git@github.com:o/n(.git)`.
+String? repoFullNameFromRemote(String url) {
+  var u = url.trim();
+  u = u.replaceFirst(RegExp(r'^git@github\.com:'), 'https://github.com/');
+  final m = RegExp(r'github\.com[/:]([^/]+)/(.+?)(?:\.git)?/?$').firstMatch(u);
+  if (m == null) return null;
+  return '${m.group(1)}/${m.group(2)}';
+}
+
+/// Where a page's exported PDF lives in the repo: a `Whiteboards/` folder, one
+/// sub-folder per section, one PDF per page — so re-pushing a session updates
+/// the same file instead of piling up copies.
+String whiteboardPdfPath(String section, String page) {
+  String seg(String s) {
+    final c = s
+        .trim()
+        .replaceAll(RegExp(r'[^A-Za-z0-9._ -]+'), '-')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'-{2,}'), '-')
+        .replaceAll(RegExp(r'^[-.]+|[-.]+$'), '')
+        .trim();
+    return c.isEmpty ? 'Untitled' : c;
+  }
+
+  return 'Whiteboards/${seg(section)}/${seg(page)}.pdf';
 }
 
 /// A repository name GitHub will accept, derived from a notebook title.

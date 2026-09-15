@@ -11,6 +11,7 @@ import '../export/open_export.dart';
 import '../export/pdf_export.dart';
 import '../export/pdf_vector_export.dart';
 import '../export/print_page.dart';
+import '../export/repo_push.dart';
 import '../editor/list_editing.dart';
 import '../markdown/md_syntax.dart';
 import '../model/models.dart' show PaperSize;
@@ -249,6 +250,12 @@ class _CommandBarState extends State<CommandBar> {
                                     onProgress: (done, total) =>
                                         report('Page $done of $total…'))),
                           ),
+                          if (_canPushToRepo)
+                            ToolbarSubmenuItem(
+                              icon: Icons.cloud_upload_outlined,
+                              label: 'Push this page to the repo (PDF)',
+                              onPressed: () => _pushToRepo(context),
+                            ),
                         ],
                       ),
                       // The one place to LOOK for a setting (PLANNING
@@ -528,6 +535,14 @@ class _CommandBarState extends State<CommandBar> {
           // in no other user-visible string in the app.
           child: const Text('Save the whole notebook as folders and files…'),
         ),
+        if (_canPushToRepo) ...[
+          const Divider(height: 6),
+          MenuItemButton(
+            leadingIcon: const Icon(Icons.cloud_upload_outlined, size: 18),
+            onPressed: () => _pushToRepo(context),
+            child: const Text('Push this page to the repo (PDF)'),
+          ),
+        ],
       ];
 
   Future<void> _export(
@@ -544,6 +559,27 @@ class _CommandBarState extends State<CommandBar> {
         duration: const Duration(seconds: 6),
       ));
     }
+  }
+
+  /// Whether "Push this page to the repo" belongs in the Export menu: only when
+  /// the open notebook is bound to a GitHub repo.
+  bool get _canPushToRepo => app.gitEnabled && app.githubConnected;
+
+  /// Upload the current page as a PDF into the notebook's connected repo.
+  Future<void> _pushToRepo(BuildContext context) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.showSnackBar(const SnackBar(
+        content: Text('Pushing this page to the repo…'),
+        duration: Duration(seconds: 2)));
+    final res = await pushPageToRepo(app);
+    if (!context.mounted) return;
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(SnackBar(
+      content: Text(res.ok
+          ? 'Pushed to ${res.path} in the repo.'
+          : (res.error ?? 'Could not push to the repo.')),
+      duration: const Duration(seconds: 5),
+    ));
   }
 
   // ── HOME: history + text formatting ──────────────────────────────────

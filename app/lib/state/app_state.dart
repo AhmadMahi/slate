@@ -653,6 +653,25 @@ class AppState extends ChangeNotifier
   String? _gitRemote;
   Timer? _gitDebounce;
 
+  /// A safety net over [scheduleGitSync]'s debounce: that timer is pushed back
+  /// on every keystroke, so a long session with no pause would never fire.
+  /// This fires on a fixed cadence regardless, and [syncGitNow] is a no-op when
+  /// there is nothing to commit (and returns early when git is not enabled), so
+  /// an idle tick costs nothing.
+  ///
+  /// Started ONCE from [init] and left running for the app's lifetime — like
+  /// [_startSyncStatusPolling] — rather than from a per-notebook path, so
+  /// opening a notebook (which widget tests do) never creates a stray timer.
+  Timer? _gitHeartbeat;
+  static const _gitHeartbeatInterval = Duration(minutes: 5);
+
+  void _startGitHeartbeat() {
+    _gitHeartbeat?.cancel();
+    _gitHeartbeat = Timer.periodic(_gitHeartbeatInterval, (_) {
+      if (_gitEnabled) syncGitNow();
+    });
+  }
+
   /// Is this notebook backed by a git remote?
   bool get gitEnabled => _gitEnabled;
   String? get gitRemote => _gitRemote;
@@ -685,6 +704,7 @@ class AppState extends ChangeNotifier
     _gitRemote = null;
     gitStatus = null;
     _gitDebounce?.cancel();
+    _gitHeartbeat?.cancel();
     if (notebookId == null) return;
     final raw = _repo.getSetting(_gitKey(notebookId!));
     if (raw is! Map) return;
@@ -1260,6 +1280,37 @@ class AppState extends ChangeNotifier
       gitBusy = false;
       notifyListeners();
     }
+  }
+
+  /// A GitHub API bound to the connected account, or null if not connected.
+  /// The [debugGitHubBase] override points tests at a local server.
+  GitHubApi? githubApi() => githubConnected
+      ? GitHubApi(_githubToken!, baseUrl: debugGitHubBase)
+      : null;
+
+  /// The user's own repositories, most-recently-updated first, for the
+  /// "choose an existing repo" picker. Null when not connected or on error.
+  Future<List<GitHubRepo>?> githubListRepos() async {
+    final api = githubApi();
+    if (api == null) return null;
+    try {
+      return await api.listRepos();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Bind the OPEN notebook to a repo the user already has, and run a first
+  /// sync. Same machinery as [createGitHubRepo] minus the creation: set the
+  /// remote, then commit-pull-push. Returns null on success, or a message.
+  Future<String?> connectNotebookToExistingRepo(String cloneUrl) async {
+    if (notebookId == null) return 'Open a notebook first.';
+    final url = cloneUrl.trim();
+    if (url.isEmpty) return 'Pick a repository first.';
+    await setGitEnabled(true, remote: url);
+    // setGitEnabled records the failure in gitStatus; surface it to the caller.
+    final s = gitStatus ?? '';
+    return s.startsWith('Could not') ? s : null;
   }
 
   /// Run one cycle now, and report what happened.
@@ -6507,6 +6558,7 @@ class AppState extends ChangeNotifier
     }
     loadSyncRoots();
     _startSyncStatusPolling();
+    _startGitHeartbeat();
     study.load();
     planner.load();
     // Armed only once state is restored: the scheduler's first act is to catch
@@ -9877,6 +9929,7 @@ class AppState extends ChangeNotifier
   Future<void> shutdown() async {
     _saveDebounce?.cancel();
     _gitDebounce?.cancel();
+    _gitHeartbeat?.cancel();
     _housekeepingTimer?.cancel();
     try {
       await flushSave();
@@ -9948,6 +10001,7 @@ class AppState extends ChangeNotifier
     _housekeepingNoteClear?.cancel();
     _syncStatusPoll?.cancel();
     _saveDebounce?.cancel();
+    _gitHeartbeat?.cancel();
     // The planner owns a Timer. A `late final` touched here is constructed
     // just to be torn down, which costs nothing; a live timer left behind
     // keeps the isolate awake, which does.
