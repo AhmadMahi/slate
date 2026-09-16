@@ -9,6 +9,7 @@ import '../math/graph_plot.dart';
 import '../model/models.dart';
 import '../state/app_state.dart';
 import 'md_common.dart';
+import 'pdf_vector_export.dart' show buildPagePdf;
 
 /// Open-format exporters (OPEN-5/6/7): the "glass box" promise made real.
 ///
@@ -61,8 +62,14 @@ Future<String?> materializeNotebook(AppState app,
 ///
 /// The caller owns [root]: pass a fresh (or freshly cleaned) directory when a
 /// clean snapshot is wanted.
+///
+/// [withPagePdf] also writes a `<page>.pdf` beside each page's other files —
+/// the same PDF the Export menu makes. It reads the OPEN page/notebook, so the
+/// caller must only set it when [nbId] is the open notebook (the central backup
+/// does this only for the notebook currently in view).
 Future<void> materializeNotebookInto(AppState app, String nbId, String root,
-    {void Function(int done, int total)? onProgress}) async {
+    {void Function(int done, int total)? onProgress,
+    bool withPagePdf = false}) async {
   final nb = app.notebooks.firstWhere((n) => n.id == nbId);
   await Directory(root).create(recursive: true);
   final assetsDir = p.join(root, 'assets');
@@ -127,6 +134,17 @@ Future<void> materializeNotebookInto(AppState app, String nbId, String root,
     final inkml = _inkML(blocks);
     if (inkml != null) {
       await File(p.join(pageDir, 'page.inkml')).writeAsString(inkml);
+    }
+
+    // 5) A PDF of the page — the readable artefact the owner wants in the
+    // backup beside the open-format files. Only for the open notebook (the PDF
+    // builder reads the open page); a page that cannot render just has none.
+    if (withPagePdf) {
+      try {
+        final pdf = await buildPagePdf(app, node.id, title: node.title);
+        await File(p.join(pageDir, '${safeFilename(node.title)}.pdf'))
+            .writeAsBytes(pdf);
+      } catch (_) {}
     }
 
     manifestPages.add({

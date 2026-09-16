@@ -272,10 +272,11 @@ Slate is local-first; sync is optional and needs no Slate account.
 - **Back up every notebook to one repo.** Settings → Connections → **Sync all
   notebooks**: connect GitHub, then turn on backup. Slate keeps *every* notebook
   in a single private repository, one folder per notebook, in clean readable form
-  (Markdown, images and structure — no internal clutter). It backs up
-  automatically as you work, when you make a new notebook, and on a schedule. It
-  is a one-way mirror (it uploads what is here and never changes your notebooks),
-  and deleting a notebook asks whether to remove it from the backup too.
+  (Markdown, images, structure — and a **PDF of each page** beside them, so you
+  can read the pages straight from GitHub). It backs up automatically as you
+  work, when you make a new notebook, and on a schedule. It is a one-way mirror
+  (it uploads what is here and never changes your notebooks), and deleting a
+  notebook asks whether to remove it from the backup too.
 - **Folder sync.** Point a notebook at any folder your device already syncs
   (Google Drive, OneDrive, Dropbox, iCloud Drive, Syncthing, a NAS…). Slate's
   storage is an append-only, one-writer-per-device log, so two devices editing
@@ -285,17 +286,17 @@ Slate is local-first; sync is optional and needs no Slate account.
   a repository. This only *connects* — it uploads nothing on its own (no notes,
   no history, no clutter). The repo stays empty until you push a page. A new
   notebook offers the same connect right after you name it.
-- **Push a page — and everything on it — to the repo.** In a page's **Export**
-  menu, **Push this page to the repo** sends, into one `Whiteboards/<page>/`
-  folder:
+- **Push a page to the repo as PDFs.** In a page's **Export** menu, **Push this
+  page to the repo** sends, into one `Whiteboards/<page>/` folder — **PDFs only**:
   - `<page> - whiteboard.pdf` — the page itself.
   - `<page> - mindmap.pdf` — each mind map, fully expanded, as an outline.
   - `<page> - quiz.pdf` — each quiz (questions, then all answers).
-  - `<page> - <name>.pdf` / `.pptx` — each presentation, PDF or imported file.
-  - `images/…` — each image, when you tick "also upload images separately".
-  One action while teaching, no Save-as, no browser; re-pushing updates the same
-  files. It goes straight to the repo through GitHub's API and never touches the
-  notebook's own storage.
+  - `<page> - <name>.pdf` — each presentation or imported PDF.
+  Images and non-PDF files are not uploaded, so the repo stays a clean set of
+  readable documents. One click while teaching, no Save-as, no browser;
+  re-pushing updates the same files, straight through GitHub's API. The option is
+  always in the Export menu; if no repo is connected yet it tells you where to
+  connect one.
 - **Folder history sync (optional).** "Sync with git" still keeps a notebook's
   full history in a repo if you want it, separate from the page-push above.
 - **Mirrors.** Keep one-way backup copies of a notebook.

@@ -192,6 +192,11 @@ class CentralSync {
   /// Materialize one notebook into `mirror/<folder>/`, cleaning the folder
   /// first (so deleted pages disappear) and moving it if the notebook was
   /// renamed since last time.
+  ///
+  /// Page PDFs are written for the OPEN notebook (the PDF builder reads the open
+  /// page). For a closed notebook we cannot regenerate them, so any PDFs already
+  /// in its folder are preserved across the wipe — so a notebook keeps the PDFs
+  /// from the last time it was open.
   Future<void> _materialiseNotebook(String nbId, String title) async {
     final desired = _uniqueFolder(nbId, title);
     final prev = _folders[nbId];
@@ -200,8 +205,31 @@ class CentralSync {
       if (old.existsSync()) old.deleteSync(recursive: true);
     }
     final dir = Directory(p.join(_mirrorDir, desired));
-    if (dir.existsSync()) dir.deleteSync(recursive: true);
-    await materializeNotebookInto(_app, nbId, dir.path);
+    final isOpen = nbId == _app.notebookId;
+
+    // Preserve existing PDFs for a closed notebook (keyed by path within the
+    // folder), since we cannot rebuild them here.
+    final savedPdfs = <String, List<int>>{};
+    if (dir.existsSync()) {
+      if (!isOpen) {
+        for (final f in dir.listSync(recursive: true).whereType<File>()) {
+          if (f.path.toLowerCase().endsWith('.pdf')) {
+            savedPdfs[p.relative(f.path, from: dir.path)] = f.readAsBytesSync();
+          }
+        }
+      }
+      dir.deleteSync(recursive: true);
+    }
+
+    await materializeNotebookInto(_app, nbId, dir.path, withPagePdf: isOpen);
+
+    if (!isOpen) {
+      for (final e in savedPdfs.entries) {
+        final target = File(p.join(dir.path, e.key));
+        target.parent.createSync(recursive: true);
+        target.writeAsBytesSync(e.value);
+      }
+    }
     _folders[nbId] = desired;
   }
 

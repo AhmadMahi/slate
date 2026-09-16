@@ -561,57 +561,26 @@ class _CommandBarState extends State<CommandBar> {
     }
   }
 
-  /// Whether "Push this page to the repo" belongs in the Export menu: only when
-  /// the open notebook is connected to a push-target repo.
-  bool get _canPushToRepo => app.connectedForPush;
+  /// "Push this page to the repo" shows whenever a page is open, so it is always
+  /// findable; if no repo is connected yet, pushing says how to connect one.
+  bool get _canPushToRepo => app.pageId != null;
 
-  /// Push the current page and its contents (mind maps, quizzes, files) into the
-  /// connected repo. Asks once whether to also upload images separately.
+  /// Push the current page (and its mind maps, quizzes and PDFs) to the
+  /// connected repo as PDFs — one click. If nothing is connected yet, the
+  /// result explains where to connect a repo.
   Future<void> _pushToRepo(BuildContext context) async {
-    var includeImages = false;
-    final go = await showOnoteDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Push this page to the repo'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Uploads this page as a PDF, plus any mind maps, quizzes and '
-                'files on it, into a Whiteboards folder in the connected repo.',
-                style: TextStyle(fontSize: 12.5, height: 1.4),
-              ),
-              const SizedBox(height: 8),
-              CheckboxListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                value: includeImages,
-                onChanged: (v) => setLocal(() => includeImages = v ?? false),
-                title: const Text('Also upload images separately',
-                    style: TextStyle(fontSize: 13)),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Push')),
-          ],
-        ),
-      ),
-    );
-    if (go != true || !context.mounted) return;
     final messenger = ScaffoldMessenger.maybeOf(context);
+    if (!app.connectedForPush) {
+      messenger?.showSnackBar(const SnackBar(
+        content: Text('Connect a repo first: Sync → Push pages to GitHub.'),
+        duration: Duration(seconds: 5),
+      ));
+      return;
+    }
     messenger?.showSnackBar(const SnackBar(
         content: Text('Pushing this page to the repo…'),
         duration: Duration(seconds: 3)));
-    final res = await pushPageToRepo(app, includeImages: includeImages);
+    final res = await pushPageToRepo(app);
     if (!context.mounted) return;
     messenger?.hideCurrentSnackBar();
     messenger?.showSnackBar(SnackBar(

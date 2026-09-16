@@ -10,12 +10,11 @@
 /// - `<page> - mindmap.pdf`      each mind map, fully expanded
 /// - `<page> - quiz.pdf`         each quiz (questions, then all answers)
 /// - `<page> - <name>.pdf`       each presentation / imported PDF
-/// - `<page> - <name>.<ext>`     each imported file, as-is
-/// - `images/<page> - image-N…`  each image, only when asked
 ///
-/// It uploads through GitHub's Contents API and never touches the notebook's
-/// own sync. Re-pushing overwrites the same files, so a session taught twice
-/// does not pile up copies.
+/// **PDFs only** — images and non-PDF files are deliberately not uploaded, so
+/// the repo stays a clean set of readable documents. It uploads through
+/// GitHub's Contents API and never touches the notebook's own sync. Re-pushing
+/// overwrites the same files, so a session taught twice does not pile up copies.
 library;
 
 import 'dart:typed_data';
@@ -47,12 +46,10 @@ class _Upload {
   final String message;
 }
 
-/// Push the current page and its contents. [includeImages] adds an `images/`
-/// folder with every image on the page. Never throws.
-Future<RepoPushResult> pushPageToRepo(
-  AppState app, {
-  bool includeImages = false,
-}) async {
+/// Push the current page and its contents — **PDFs only**. The page, each mind
+/// map, each quiz, and each presentation/PDF on it go up as PDF files; nothing
+/// else (no images, no non-PDF files) is uploaded. Never throws.
+Future<RepoPushResult> pushPageToRepo(AppState app) async {
   final id = app.pageId;
   if (id == null) return const RepoPushResult.fail('Open a page first.');
   if (!app.connectedForPush || (app.pushRepo?.isEmpty ?? true)) {
@@ -69,8 +66,9 @@ Future<RepoPushResult> pushPageToRepo(
         "The push target is not a GitHub repository.");
   }
   final page = app.nodes.where((n) => n.id == id).firstOrNull;
-  if (page == null)
+  if (page == null) {
     return const RepoPushResult.fail('That page no longer exists.');
+  }
   final pageTitle = page.title.trim().isNotEmpty ? page.title : 'Untitled';
   final dir = whiteboardDir(pageTitle);
   final base = whiteboardSegment(pageTitle);
@@ -94,8 +92,11 @@ Future<RepoPushResult> pushPageToRepo(
   uploads.add(
       _Upload('$dir/$base - whiteboard.pdf', pageBytes, 'Slate: $pageTitle'));
 
-  // 2) The blocks on the page, each turned into a file of its own.
-  var mind = 0, quiz = 0, image = 0;
+  // 2) The blocks on the page, each turned into a PDF of its own. PDFs only:
+  //    mind maps and quizzes are rendered to PDF; presentations and imported
+  //    files ride along only when they are already PDFs. Images and other file
+  //    types are deliberately skipped.
+  var mind = 0, quiz = 0, doc = 0;
   for (final b in app.blocks) {
     switch (b.type) {
       case BlockType.mindmap:
@@ -120,30 +121,25 @@ Future<RepoPushResult> pushPageToRepo(
         uploads.add(
             _Upload('$dir/$base - $s.pdf', bytes, 'Slate: $pageTitle quiz'));
       case BlockType.presentation:
+        // A presentation is stored as a PDF blob.
         final bytes = _blobOf(app, b.content['pdf']);
         if (bytes == null) break;
         final label = _stripExt((b.content['name'] as String?)?.trim());
-        uploads.add(_Upload(
-            '$dir/$base - ${whiteboardSegment(label.isEmpty ? 'presentation' : label)}.pdf',
-            bytes,
-            'Slate: $pageTitle presentation'));
-      case BlockType.file:
-        final bytes = _blobOf(app, b.content['blob']);
-        if (bytes == null) break;
-        // Keep the file's own name and extension (a .pptx stays a .pptx).
-        final name = (b.content['name'] as String?)?.trim();
+        doc++;
         final safe =
-            whiteboardSegment((name == null || name.isEmpty) ? 'file' : name);
-        uploads.add(
-            _Upload('$dir/$base - $safe', bytes, 'Slate: $pageTitle file'));
-      case BlockType.image:
-        if (!includeImages) break;
+            whiteboardSegment(label.isEmpty ? 'presentation-$doc' : label);
+        uploads.add(_Upload(
+            '$dir/$base - $safe.pdf', bytes, 'Slate: $pageTitle presentation'));
+      case BlockType.file:
+        // Only PDFs ride along; other file types are skipped.
+        if (!_isPdf(b.content)) break;
         final bytes = _blobOf(app, b.content['blob']);
         if (bytes == null) break;
-        image++;
-        final ext = _imageExt(b.content['mime'] as String?);
-        uploads.add(_Upload('$dir/images/$base - image-$image$ext', bytes,
-            'Slate: $pageTitle image'));
+        final label = _stripExt((b.content['name'] as String?)?.trim());
+        doc++;
+        final safe = whiteboardSegment(label.isEmpty ? 'document-$doc' : label);
+        uploads.add(
+            _Upload('$dir/$base - $safe.pdf', bytes, 'Slate: $pageTitle file'));
       default:
         break;
     }
@@ -177,17 +173,10 @@ String _stripExt(String? name) {
   return dot > 0 ? name.substring(0, dot) : name;
 }
 
-String _imageExt(String? mime) {
-  switch (mime) {
-    case 'image/jpeg':
-      return '.jpg';
-    case 'image/gif':
-      return '.gif';
-    case 'image/webp':
-      return '.webp';
-    case 'image/svg+xml':
-      return '.svg';
-    default:
-      return '.png';
-  }
+/// Whether a file block holds a PDF (by mime or by name), so only PDFs push.
+bool _isPdf(Map<String, dynamic> content) {
+  final mime = (content['mime'] as String? ?? '').toLowerCase();
+  if (mime == 'application/pdf') return true;
+  final name = (content['name'] as String? ?? '').toLowerCase();
+  return name.endsWith('.pdf');
 }
