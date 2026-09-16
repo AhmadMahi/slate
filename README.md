@@ -151,6 +151,9 @@ Switch to the pen (the toolbar pencil, or press **P**) to draw anywhere.
 - **Themes** — System, Light or Dark, with a soft accent colour that washes the
   whole app. Set per-app in **Settings → Appearance**; defaults for new pages in
   **Settings → Default page settings**.
+- **Default page settings** (Settings) also offer **Fit new pages to width** (a
+  new page opens filled to the window) and **Add page background to the PDF
+  export** (exported and pushed PDFs carry the page's grid/dots/ruled pattern).
 
 ### Insert: everything you can add to a page
 
@@ -297,8 +300,6 @@ Slate is local-first; sync is optional and needs no Slate account.
   re-pushing updates the same files, straight through GitHub's API. The option is
   always in the Export menu; if no repo is connected yet it tells you where to
   connect one.
-- **Folder history sync (optional).** "Sync with git" still keeps a notebook's
-  full history in a repo if you want it, separate from the page-push above.
 - **Mirrors.** Keep one-way backup copies of a notebook.
 
 Set these up in **Settings → Connections → Sync**.

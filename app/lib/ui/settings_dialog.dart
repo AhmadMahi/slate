@@ -450,9 +450,13 @@ class _SettingsDialogState extends State<_SettingsDialog> {
               },
               app.setDefaultPageSize),
         ),
-        // New: whether a page opens filling the window width.
-        _row('Stretch to screen',
+        // Whether a page opens filled to the window width — the same as the
+        // "Fit to width" control on the page, so the two read alike.
+        _row('Fit new pages to width',
             _toggle(app.defaultStretchToScreen, app.setDefaultStretchToScreen)),
+        // Whether an exported/pushed PDF carries the page's background pattern.
+        _row('Add page background to the PDF export',
+            _toggle(app.defaultPdfBackground, app.setDefaultPdfBackground)),
       ];
 
   List<Widget> _connections(BuildContext context) => [

@@ -193,6 +193,12 @@ Future<void> _addPageSheets(
   final sheets = (bottomPx / sheetPx).ceil().clamp(1, 500);
   final format = PdfPageFormat(widthPx / _pxPerPoint, sheetPx / _pxPerPoint);
 
+  // Draw the page's background pattern into the PDF when the user asked for it
+  // (Default page settings → "Add page background to the PDF export"). Blank
+  // pages, and papers with no line pattern, add nothing.
+  final drawBg = app.defaultPdfBackground && props.background != 'blank';
+  final bgSpacingPt = props.bgSpacing / _pxPerPoint;
+
   for (var sheet = 0; sheet < sheets; sheet++) {
     final top = sheet * sheetPx;
     final bottom = top + sheetPx;
@@ -210,6 +216,13 @@ Future<void> _addPageSheets(
       margin: pw.EdgeInsets.zero,
       build: (_) => pw.Stack(
         children: [
+          if (drawBg)
+            pw.Positioned.fill(
+              child: pw.CustomPaint(
+                painter: (canvas, size) => _paintPdfBackground(canvas, size,
+                    props.background, bgSpacingPt < 4 ? 4 : bgSpacingPt),
+              ),
+            ),
           // The title band, on the first sheet only — the same place and the
           // same shape the canvas draws it (page_title_view.dart). The exporter
           // iterates `blocks`, and the title is not a block: it lives on the
@@ -295,11 +308,57 @@ PdfPageFormat debugPageFormat(AppState app, String pageId) {
 double? slideHeightOf(List<Block> blocks, double widthPx) =>
     _slideHeight(blocks, widthPx);
 
+/// Paint a page's background pattern onto a PDF sheet, in points. A uniform
+/// pattern, so the PDF's bottom-left origin does not matter. Kept faint, like
+/// the on-screen paper, so it never competes with the notes on top.
+void _paintPdfBackground(
+    PdfGraphics canvas, PdfPoint size, String background, double spacing) {
+  const line = PdfColor.fromInt(0xFFCED3DB);
+  switch (background) {
+    case 'grid':
+      canvas
+        ..setStrokeColor(line)
+        ..setLineWidth(0.4);
+      for (var x = spacing; x < size.x; x += spacing) {
+        canvas
+          ..moveTo(x, 0)
+          ..lineTo(x, size.y);
+      }
+      for (var y = spacing; y < size.y; y += spacing) {
+        canvas
+          ..moveTo(0, y)
+          ..lineTo(size.x, y);
+      }
+      canvas.strokePath();
+    case 'ruled':
+      canvas
+        ..setStrokeColor(line)
+        ..setLineWidth(0.4);
+      for (var y = spacing; y < size.y; y += spacing) {
+        canvas
+          ..moveTo(0, y)
+          ..lineTo(size.x, y);
+      }
+      canvas.strokePath();
+    case 'dotted':
+      canvas.setFillColor(line);
+      for (var x = spacing; x < size.x; x += spacing) {
+        for (var y = spacing; y < size.y; y += spacing) {
+          canvas.drawEllipse(x, y, 0.7, 0.7);
+        }
+      }
+      canvas.fillPath();
+    default:
+      break;
+  }
+}
+
 double? _slideHeight(List<Block> blocks, double widthPx) {
   Block? found;
   for (final b in blocks) {
     if (b.type != BlockType.image) continue;
-    if (b.content['background'] != true || b.content['locked'] != true) continue;
+    if (b.content['background'] != true || b.content['locked'] != true)
+      continue;
     if (found != null) return null; // two backgrounds: not a slide page
     found = b;
   }
@@ -319,8 +378,8 @@ bool _overlaps(AppState app, Block b, double top, double bottom) {
 ///
 /// Returns null for a block this exporter has nothing useful to say about, so
 /// an unknown future block type is skipped rather than drawn as a placeholder.
-pw.Widget? _blockWidget(AppState app, Block b, double sheetTop,
-    Map<String, Uint8List> maths) {
+pw.Widget? _blockWidget(
+    AppState app, Block b, double sheetTop, Map<String, Uint8List> maths) {
   final h = b.h ?? app.renderSizes[b.id]?.height ?? app.estimatedHeight(b);
   final left = b.x / _pxPerPoint;
   final top = (b.y - sheetTop) / _pxPerPoint;
@@ -350,8 +409,7 @@ pw.Widget? _blockWidget(AppState app, Block b, double sheetTop,
 /// with its attribution rather than pretending the content was here.
 pw.Widget _embedWidget(AppState app, Block b, double h) {
   final ref = (b.content['ref'] as Map?)?.cast<String, dynamic>();
-  final title =
-      (app.node(ref?['pageId'] as String? ?? '')?.title ?? '').trim();
+  final title = (app.node(ref?['pageId'] as String? ?? '')?.title ?? '').trim();
   return pw.Container(
     height: h / _pxPerPoint,
     padding: const pw.EdgeInsets.all(4),
@@ -390,8 +448,7 @@ List<pw.Widget> _titleBand(AppState app, String pageId, double widthPx) {
             pw.SizedBox(height: 6 / _pxPerPoint),
             pw.Text(_dateLine(node?.createdAt ?? 0),
                 style: const pw.TextStyle(
-                    fontSize: 12 * 72 / 120,
-                    color: PdfColors.grey600)),
+                    fontSize: 12 * 72 / 120, color: PdfColors.grey600)),
           ],
         ),
       ),
@@ -400,8 +457,18 @@ List<pw.Widget> _titleBand(AppState app, String pageId, double widthPx) {
 }
 
 const _months = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
 ];
 const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -570,7 +637,8 @@ Future<Uint8List?> _rasteriseTex(String tex, {required bool inline}) =>
       // backslashes in the PDF — the export would have been half the fix.
       Math.tex(renderableLatex(tex),
           mathStyle: MathStyle.display,
-          textStyle: const TextStyle(fontSize: _mathRasterEm, color: Colors.black),
+          textStyle:
+              const TextStyle(fontSize: _mathRasterEm, color: Colors.black),
           onErrorFallback: (_) => const SizedBox.shrink()),
       pixelRatio: _mathPixelRatio,
     );
@@ -720,8 +788,7 @@ pw.Widget _cardWidget(String front, String back) => pw.Container(
           pw.Text(_stripInline(front),
               style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 2),
-          pw.Text(_stripInline(back),
-              style: const pw.TextStyle(fontSize: 9)),
+          pw.Text(_stripInline(back), style: const pw.TextStyle(fontSize: 9)),
         ],
       ),
     );
@@ -741,15 +808,14 @@ pw.Widget? _plainTextWidget(Block b,
   // _blockWidget.
   final raw = override ??
       (b.content['text'] ??
-      b.content['source'] ??
+          b.content['source'] ??
           b.content['linearSource'] ??
           b.content['latex']) as String?;
   if (raw == null || raw.trim().isEmpty) return null;
   final sizePx = (b.content['fontSize'] as num?)?.toDouble() ?? 15.0;
   final size = sizePx / _pxPerPoint;
   // Code keeps a monospaced face — alignment IS the content in a code block.
-  final mono =
-      b.type == BlockType.code ? (_mono ?? pw.Font.courier()) : null;
+  final mono = b.type == BlockType.code ? (_mono ?? pw.Font.courier()) : null;
 
   final spans = <pw.InlineSpan>[];
   for (final line in raw.split('\n')) {

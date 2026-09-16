@@ -380,6 +380,12 @@ class _PageCanvasState extends State<PageCanvas>
       if (mem != null && !(mem[0] == 1.0 && mem[1] == 0.0 && mem[2] == 0.0)) {
         controller.jumpTo(mem[0], Offset(mem[1], mem[2]));
         controller.clampToPage();
+      } else if (app.defaultStretchToScreen) {
+        // "Fit new pages to width": the page opens filling the window width
+        // (fillWidth zooms IN as well as out), the reliable place being here —
+        // the viewport is laid out by this post-frame, which it is not yet when
+        // the page is first selected.
+        app.fitPageToWidth();
       } else {
         controller.fitWidth(app.contentExtent().right);
       }

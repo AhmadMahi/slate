@@ -6610,6 +6610,8 @@ class AppState extends ChangeNotifier
     if (dps != null) defaultPageSize = dps;
     final dss = _repo.getSetting('defaultStretchToScreen');
     if (dss is bool) defaultStretchToScreen = dss;
+    final dpb = _repo.getSetting('defaultPdfBackground');
+    if (dpb is bool) defaultPdfBackground = dpb;
     final nsw = _repo.getSetting('navSectionsW');
     if (nsw is num) navSectionsW = nsw.toDouble().clamp(96, 220);
     final npw = _repo.getSetting('navPagesW');
@@ -7320,9 +7322,9 @@ class AppState extends ChangeNotifier
     }
     docRevision++;
     _persistSession();
-    // Stretch to screen: a page opens fitted to the window when that default
-    // is on. Opt-in, so pages otherwise open exactly as before.
-    if (id != null && defaultStretchToScreen) fitPageToWidth();
+    // "Fit new pages to width" is applied by PageCanvas.initState's post-frame
+    // (the viewport is not laid out yet here), so a page reliably opens filled
+    // to the window when that default is on.
     notifyListeners();
   }
 
@@ -9616,6 +9618,12 @@ class AppState extends ChangeNotifier
   /// locked). Off by default, so a page opens exactly as earlier builds left it.
   bool defaultStretchToScreen = false;
 
+  /// Whether an exported/pushed PDF is drawn on the page's background pattern
+  /// (grid / dots / ruled) rather than a plain white sheet. Off by default.
+  /// One flag for every PDF path — Export, push-to-repo and the central backup
+  /// all build the PDF the same way.
+  bool defaultPdfBackground = false;
+
   void setDefaultBackground(String v) {
     defaultBackground = v;
     _repo.setSetting('defaultBackground', v);
@@ -9643,6 +9651,12 @@ class AppState extends ChangeNotifier
   void setDefaultStretchToScreen(bool v) {
     defaultStretchToScreen = v;
     _repo.setSetting('defaultStretchToScreen', v);
+    notifyListeners();
+  }
+
+  void setDefaultPdfBackground(bool v) {
+    defaultPdfBackground = v;
+    _repo.setSetting('defaultPdfBackground', v);
     notifyListeners();
   }
 
