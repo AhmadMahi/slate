@@ -284,5 +284,19 @@ class CentralSync {
     }
   }
 
+  /// Delete the LOCAL copies of every notebook — the GitHub backup keeps them.
+  /// For wiping a borrowed machine clean after a restore. Returns how many were
+  /// removed (the app keeps at least one notebook, so the last may remain).
+  Future<int> removeLocalCopies() async {
+    var removed = 0;
+    for (final id in [for (final n in _app.notebooks) n.id]) {
+      if (await _app.deleteNotebook(id)) removed++;
+    }
+    _folders.clear();
+    if (enabled) _save();
+    _app.notifyCentral();
+    return removed;
+  }
+
   void dispose() => _debounce?.cancel();
 }

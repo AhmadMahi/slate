@@ -259,5 +259,59 @@ class _CentralSyncDialogState extends State<_CentralSyncDialog> {
             child: const Text('Turn off', style: TextStyle(fontSize: 12)),
           ),
         ]),
+        const Divider(height: 20),
+        // A distinct, guarded destructive action — for clearing a borrowed
+        // machine after a restore. The GitHub backup is untouched.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _busy ? null : _removeLocalCopies,
+            icon: const Icon(Icons.delete_sweep_outlined,
+                size: 16, color: OnoteColors.danger),
+            label: const Text('Remove local copies…',
+                style: TextStyle(fontSize: 12, color: OnoteColors.danger)),
+          ),
+        ),
+        const Text(
+          'Deletes every notebook from THIS computer. Your GitHub backup keeps '
+          'them, and you can restore again any time.',
+          style: TextStyle(fontSize: 11, color: OnoteColors.graphite400),
+        ),
       ];
+
+  Future<void> _removeLocalCopies() async {
+    final ok = await showOnoteDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove local copies?'),
+        content: const Text(
+          'This deletes every notebook from this computer. Your GitHub backup '
+          'is not touched — you can restore them again any time.',
+          style: TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: OnoteColors.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove from this computer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    final n = await app.central.removeLocalCopies();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = null;
+    });
+    final m = ScaffoldMessenger.maybeOf(context);
+    m?.showSnackBar(SnackBar(
+        content: Text('Removed $n notebook${n == 1 ? '' : 's'} from this '
+            'computer. The backup is unchanged.')));
+  }
 }

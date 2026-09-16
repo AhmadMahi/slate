@@ -10,6 +10,7 @@ import '../state/app_state.dart';
 import '../theme/onote_theme.dart';
 import 'join_git_dialog.dart';
 import 'onboarding.dart';
+import 'restore_dialog.dart';
 import 'sync_dot.dart';
 import '../theme/tokens.dart';
 import 'onote_dialog.dart';
@@ -123,8 +124,9 @@ class _NotebookManagerState extends State<_NotebookManager> {
       _toast("That's your only notebook — create another one first.");
       return;
     }
-    if (context.mounted)
+    if (context.mounted) {
       await maybeRemoveFromBackup(context, app, nb.id, title);
+    }
   }
 
   Future<void> _duplicate(NotebookRef nb) async {
@@ -306,6 +308,9 @@ class _NotebookManagerState extends State<_NotebookManager> {
         // make.
         choice(Icons.cloud_download_outlined, 'From a git address',
             (m, c) => showJoinFromGitDialog(c, app, messenger: m)),
+        // Restore every notebook from the central "Sync all notebooks" backup.
+        choice(Icons.backup_outlined, 'From a GitHub backup',
+            (m, c) => showRestoreDialog(c, app)),
       ]),
     );
   }

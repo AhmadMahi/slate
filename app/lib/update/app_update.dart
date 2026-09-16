@@ -26,7 +26,7 @@ const kAppVersion = '1.0.0';
 /// Our release build number. Releases are tagged `slate-<kAppVersion>-b<N>`;
 /// this is the running build's N, so the update check can tell one 0.8.0 build
 /// from the next. Bump it with every release.
-const kAppBuild = 7;
+const kAppBuild = 8;
 
 const _kLatestReleaseApi =
     'https://api.github.com/repos/AhmadMahi/openote/releases/latest';

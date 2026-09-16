@@ -12,7 +12,6 @@ import 'mcp_dialog.dart';
 import 'color_picker.dart' show ShortcutField;
 import 'onote_dialog.dart';
 import 'shortcut_overlay.dart';
-import 'sync_dialog.dart';
 import 'update_dialog.dart';
 
 /// The centralised settings page (PLANNING "Consistency/UX"): one place
@@ -60,7 +59,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   }
 
   Widget _section(String title) => Padding(
-        padding: const EdgeInsets.only(top: 14, bottom: 4),
+        padding: const EdgeInsets.only(top: 20, bottom: 8),
         child: Text(title,
             style: TextStyle(
                 fontSize: 12,
@@ -89,7 +88,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   /// Label left, control right — and stacked instead when the dialog is
   /// squeezed (a very narrow window), so a wide control never overflows.
   Widget _row(String label, Widget control) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: LayoutBuilder(
           builder: (context, c) => c.maxWidth < 380
               ? Column(
@@ -144,17 +143,21 @@ class _SettingsDialogState extends State<_SettingsDialog> {
 
   Widget _door(IconData icon, String label, String hint, VoidCallback open) =>
       Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(children: [
           Expanded(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(label, style: const TextStyle(fontSize: 13)),
+              const SizedBox(height: 3),
               Text(hint,
                   style: const TextStyle(
-                      fontSize: 11, color: OnoteColors.graphite400)),
+                      fontSize: 11,
+                      height: 1.3,
+                      color: OnoteColors.graphite400)),
             ]),
           ),
+          const SizedBox(width: 12),
           TextButton.icon(
             icon: Icon(icon, size: 15),
             label: const Text('Open…', style: TextStyle(fontSize: 12)),
@@ -462,11 +465,6 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   List<Widget> _connections(BuildContext context) => [
         _section('Connections'),
         _door(
-            Icons.sync,
-            'Sync',
-            'Back up and share this notebook — GitHub or a folder.',
-            () => showSyncDialog(context, app)),
-        _door(
             Icons.cloud_sync_outlined,
             'Sync all notebooks',
             app.central.enabled
@@ -475,7 +473,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
             () => showCentralSyncDialog(context, app)),
         _door(
             Icons.smart_toy_outlined,
-            'AI access',
+            'MCP connector',
             app.mcpEnabled
                 ? 'On — AI helpers on this computer can use your notes.'
                 : 'Off — connect Claude or other AI helpers.',

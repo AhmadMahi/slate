@@ -125,6 +125,26 @@ Future<void> materializeNotebookInto(AppState app, String nbId, String root,
     await File(p.join(pageDir, 'page.md')).writeAsString(md.text);
     sharedAssets.addAll(md.assets);
 
+    // Also carry the bytes of presentations and imported files, keyed by hash,
+    // so a restore can rebuild them (page.json already holds the block that
+    // references them). Videos are deliberately left out — too large for a
+    // notes backup. Images are already collected by the Markdown projection.
+    for (final b in blocks) {
+      if (b.type == BlockType.presentation) {
+        final h =
+            (b.content['pdf'] as String? ?? '').replaceFirst('sha256:', '');
+        if (h.isNotEmpty) sharedAssets[h] = '$h.pdf';
+      } else if (b.type == BlockType.file) {
+        final h =
+            (b.content['blob'] as String? ?? '').replaceFirst('sha256:', '');
+        if (h.isNotEmpty) {
+          final name = b.content['name'] as String? ?? '';
+          final dot = name.lastIndexOf('.');
+          sharedAssets[h] = dot > 0 ? '$h${name.substring(dot)}' : '$h.bin';
+        }
+      }
+    }
+
     // 3) JSON Canvas.
     await File(p.join(pageDir, 'canvas.json')).writeAsString(
         const JsonEncoder.withIndent('  ')

@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import '../model/models.dart';
 import '../state/app_state.dart';
 import '../sync/github_api.dart' show GitHubRepo;
+import 'restore_dialog.dart';
 import '../theme/onote_theme.dart';
 import '../theme/tokens.dart';
 import 'notebook_manager.dart';
@@ -322,6 +323,20 @@ class _HomeDashboardState extends State<HomeDashboard> {
                   ],
                 ),
               ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.cloud_download_outlined,
+                    size: OnoteIcon.md),
+                label: const Text('Import'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 42),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: OnoteSpace.x5),
+                  shape: const RoundedRectangleBorder(
+                      borderRadius: OnoteRadius.lgAll),
+                ),
+                onPressed: () => showRestoreDialog(context, app),
+              ),
+              const SizedBox(width: OnoteSpace.x3),
               FilledButton.icon(
                 icon: const Icon(Icons.add, size: OnoteIcon.md),
                 label: const Text('New notebook'),

@@ -4075,8 +4075,18 @@ class AppState extends ChangeNotifier
   /// notebook first and only then calls [selectNotebook], which flushes. The
   /// asymmetry is deliberate — switching mid-import would show the user a
   /// half-built notebook — and it is safe only because of that later switch.
-  Future<NotebookRef> importCreateNotebook(String title) =>
-      _repo.createNotebook(title);
+  Future<NotebookRef> importCreateNotebook(String title, {String? withId}) =>
+      _repo.createNotebook(title, withId: withId);
+
+  /// Whether a notebook with [id] already exists — so a restore can skip one it
+  /// already holds instead of making a duplicate.
+  bool hasNotebook(String id) => notebooks.any((n) => n.id == id);
+
+  /// Repaint the workspace after a restore added notebooks/nodes off-screen.
+  void notifyAfterImport() {
+    bumpNodes();
+    notifyListeners();
+  }
 
   /// Shared so toolbar/shortcuts can drive zoom (style guide §8.2).
   final canvas = CanvasController();

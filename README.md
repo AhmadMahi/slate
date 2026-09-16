@@ -280,6 +280,12 @@ Slate is local-first; sync is optional and needs no Slate account.
   work, when you make a new notebook, and on a schedule. It is a one-way mirror
   (it uploads what is here and never changes your notebooks), and deleting a
   notebook asks whether to remove it from the backup too.
+- **Restore on any computer.** **Home → Import** (or Import → *From a GitHub
+  backup*): connect GitHub, pick your backup repo, and every notebook is rebuilt
+  locally — structure, notes, drawings, images and files. Notebooks already
+  present are skipped, not duplicated. Done on a borrowed machine? The Sync
+  dialog's **Remove local copies…** wipes them from that computer while your
+  GitHub backup stays intact.
 - **Folder sync.** Point a notebook at any folder your device already syncs
   (Google Drive, OneDrive, Dropbox, iCloud Drive, Syncthing, a NAS…). Slate's
   storage is an append-only, one-writer-per-device log, so two devices editing

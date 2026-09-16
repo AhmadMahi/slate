@@ -135,7 +135,8 @@ class BlobRefill {
   bool get ok => missing.isEmpty;
 
   @override
-  String toString() => 'restored $restored, could not restore ${missing.length}';
+  String toString() =>
+      'restored $restored, could not restore ${missing.length}';
 }
 
 /// What rebuilding a container out of its own op log did — or why it refused.
@@ -331,7 +332,10 @@ class Repository {
     // Try the live registry, then the `.bak` written before the last replace.
     // A registry we can't parse must never look like "you have no notebooks".
     Map<String, dynamic>? j;
-    for (final candidate in [_workspaceFile, File('${_workspaceFile.path}.bak')]) {
+    for (final candidate in [
+      _workspaceFile,
+      File('${_workspaceFile.path}.bak')
+    ]) {
       if (!candidate.existsSync()) continue;
       try {
         final decoded = jsonDecode(await candidate.readAsString());
@@ -982,8 +986,8 @@ class Repository {
     // notebooks this session actually opened, so the notebook you had not
     // looked at yet is the one that gets destroyed.
     final open = _open.remove(notebookId);
-    checkpointAndClose(open ??
-        openOnote(ref.file, notebookId: notebookId, title: ref.title));
+    checkpointAndClose(
+        open ?? openOnote(ref.file, notebookId: notebookId, title: ref.title));
     _decodedPages.remove(notebookId);
 
     await src.copy(dest);
@@ -1037,16 +1041,19 @@ class Repository {
     return dest;
   }
 
-  Future<NotebookRef> createNotebook(String title) async {
-    final id = newId();
+  Future<NotebookRef> createNotebook(String title, {String? withId}) async {
+    final id = withId ?? newId();
     final file = _freeNotebookPath(title);
     final ref = NotebookRef(id: id, file: file, title: title);
     notebooks.add(ref);
     _open[id] = openOnote(file, notebookId: id, title: title);
     // Seed a first section + page so the notebook is immediately usable.
-    final section = upsertNode(id, TreeNode(kind: NodeKind.section, title: 'Section 1'));
-    upsertNode(id,
-        TreeNode(kind: NodeKind.page, parentId: section.id, title: 'Untitled page'));
+    final section =
+        upsertNode(id, TreeNode(kind: NodeKind.section, title: 'Section 1'));
+    upsertNode(
+        id,
+        TreeNode(
+            kind: NodeKind.page, parentId: section.id, title: 'Untitled page'));
     await _saveNow();
     return ref;
   }
@@ -1145,7 +1152,8 @@ class Repository {
   /// No [NotebookRef.logDir] either. A notebook in the workspace logs beside
   /// itself, and pointing `logDir` at the workspace folder would quietly
   /// declare the user's own notes directory a shared sync location.
-  Future<NotebookRef> adoptWorkspaceNotebook(String path, {String? title}) async {
+  Future<NotebookRef> adoptWorkspaceNotebook(String path,
+      {String? title}) async {
     if (!File(path).existsSync()) throw StateError('no notebook at $path');
     if (!p.isWithin(workspaceDir.path, path)) {
       throw StateError('$path is not inside the workspace');
@@ -1225,19 +1233,17 @@ class Repository {
   /// column — which is the entire claim.
   @visibleForTesting
   String? rawPageJsonForTest(String notebookId, String pageId) =>
-      _db(notebookId)
-          .select('SELECT json FROM page_mirror WHERE page_id=?', [pageId])
-          .firstOrNull?['json'] as String?;
+      _db(notebookId).select('SELECT json FROM page_mirror WHERE page_id=?',
+          [pageId]).firstOrNull?['json'] as String?;
 
   /// How many bytes of JSON the page mirror holds for [pageId].
   ///
   /// Measured in SQLite rather than in Dart: `LENGTH(json)` on a 3 MB row is
   /// free, and pulling the string out to call `.length` on it is not.
   int pageJsonBytes(String notebookId, String pageId) =>
-      (_db(notebookId)
-              .select('SELECT LENGTH(json) AS n FROM page_mirror WHERE page_id=?',
-                  [pageId])
-              .firstOrNull?['n'] as num?)
+      (_db(notebookId).select(
+              'SELECT LENGTH(json) AS n FROM page_mirror WHERE page_id=?',
+              [pageId]).firstOrNull?['n'] as num?)
           ?.toInt() ??
       0;
 
@@ -1261,8 +1267,8 @@ class Repository {
   /// test.
   @visibleForTesting
   List<String> blobRefsForTest(String notebookId, String pageId) => [
-        for (final r in _db(notebookId).select(
-            'SELECT hash FROM blob_refs WHERE page_id=?', [pageId]))
+        for (final r in _db(notebookId)
+            .select('SELECT hash FROM blob_refs WHERE page_id=?', [pageId]))
           r['hash'] as String
       ];
 
@@ -1487,14 +1493,14 @@ class Repository {
     if (absent.isNotEmpty || wrong.isNotEmpty) {
       return refuse(
           "Slate will not do this yet. ${absent.length + wrong.length} of "
-          "this notebook's ${all.length} pictures and drawings do not have a "
-          "good copy in the notebook's own folder, and that copy is the one "
-          'that would be left. Open the notebook, leave it open for a minute '
-          'so Slate can finish copying, then try again.',
+              "this notebook's ${all.length} pictures and drawings do not have a "
+              "good copy in the notebook's own folder, and that copy is the one "
+              'that would be left. Open the notebook, leave it open for a minute '
+              'so Slate can finish copying, then try again.',
           'no file: ${_fewHashes(absent)}\n'
-          'wrong bytes: ${_fewHashes(wrong)}\n'
-          'blobs rows ${tableHashes.length}, blob_refs hashes '
-          '${refHashes.length}, checked $checked');
+              'wrong bytes: ${_fewHashes(wrong)}\n'
+              'blobs rows ${tableHashes.length}, blob_refs hashes '
+              '${refHashes.length}, checked $checked');
     }
 
     // ── Gate 4: nothing was read out of the container this session. ────
@@ -1507,10 +1513,10 @@ class Repository {
     if (served.isNotEmpty || nowhere.isNotEmpty) {
       return refuse(
           'Slate is still reading some of this notebook’s pictures out '
-          'of the notes file rather than out of the folder beside it. Close '
-          'the notebook and open it again, then try this once more.',
+              'of the notes file rather than out of the folder beside it. Close '
+              'the notebook and open it again, then try this once more.',
           'served from the container: ${_fewHashes(served.toList())}\n'
-          'no bytes anywhere: ${_fewHashes(nowhere.toList())}');
+              'no bytes anywhere: ${_fewHashes(nowhere.toList())}');
     }
 
     // ── The 2.0× precheck, before anything is touched. ─────────────────
@@ -1523,18 +1529,18 @@ class Repository {
     if (free == null) {
       return refuse(
           'Slate could not check how much room is left on this disk, and it '
-          'will not delete anything without knowing. Nothing has been changed.',
+              'will not delete anything without knowing. Nothing has been changed.',
           'FreeSpace.bytesFor returned null for ${p.dirname(ref.file)}; '
-          'needed ${_mb(need)}');
+              'needed ${_mb(need)}');
     }
     if (free < need) {
       return refuse(
           'There is not enough free space to do this safely. Tidying up needs '
-          '${_mb(need)} free for a moment while it works, and this disk has '
-          '${_mb(free)}. Nothing has been changed — free up some room and '
-          'try again.',
+              '${_mb(need)} free for a moment while it works, and this disk has '
+              '${_mb(free)}. Nothing has been changed — free up some room and '
+              'try again.',
           'need ${need}B (2.0 × (${before}B container + ${walBefore}B '
-          'write-ahead log)), free ${free}B');
+              'write-ahead log)), free ${free}B');
     }
 
     // Past here we are going to write. The marker goes down first, so the
@@ -1553,7 +1559,7 @@ class Repository {
       if ((cp['busy'] as int? ?? 0) == 1) {
         return refuse(
             'Something else is using this notebook at the moment. Close any '
-            'other Slate window and try again.',
+                'other Slate window and try again.',
             'wal_checkpoint(TRUNCATE) busy=${cp['busy']}');
       }
       // Step 6 rewrote `blob_refs` to drop `REFERENCES blobs(hash)`, and this
@@ -1562,14 +1568,16 @@ class Repository {
       // `blob_refs`, ADR-0007's garbage-collection root set, after which a
       // collector classifies every blob file as unreferenced and deletes the
       // lot. If the constraint is somehow still there, stop.
-      final ddl = db.select("SELECT sql FROM sqlite_master WHERE type='table' "
-          "AND name='blob_refs'").first['sql'] as String;
+      final ddl = db
+          .select("SELECT sql FROM sqlite_master WHERE type='table' "
+              "AND name='blob_refs'")
+          .first['sql'] as String;
       if (ddl.contains('REFERENCES blobs')) {
         return refuse(
             'This notebook needs to be opened once by this version of Slate '
-            'before it can be tidied up. Close it and open it again.',
+                'before it can be tidied up. Close it and open it again.',
             'blob_refs still declares REFERENCES blobs(hash); '
-            '_dropBlobRefsBlobsFk has not run');
+                '_dropBlobRefsBlobsFk has not run');
       }
 
       final refsBefore = _count(db, 'blob_refs');
@@ -1611,8 +1619,8 @@ class Repository {
     } catch (e) {
       return refuse(
           'Slate could not finish tidying up this notebook. Your pictures '
-          'and drawings are safe — they are all in the folder beside the '
-          'notebook, and nothing was removed from there.',
+              'and drawings are safe — they are all in the folder beside the '
+              'notebook, and nothing was removed from there.',
           '$e');
     } finally {
       _clearReclaimMarker();
@@ -1806,7 +1814,7 @@ class Repository {
     if (!store.opsDir.existsSync()) {
       return refuse(
           "Slate could not find this notebook's own folder, so there is no "
-          'history to rebuild it from. Nothing has been changed.',
+              'history to rebuild it from. Nothing has been changed.',
           'no ops directory at ${store.opsDir.path}');
     }
     final List<Op> ops;
@@ -1815,13 +1823,13 @@ class Repository {
     } catch (e) {
       return refuse(
           "Slate could not read this notebook's history. Nothing has been "
-          'changed.',
+              'changed.',
           '$e');
     }
     if (ops.isEmpty) {
       return refuse(
           "This notebook's folder has no history in it, so rebuilding would "
-          'produce an empty notebook. Nothing has been changed.',
+              'produce an empty notebook. Nothing has been changed.',
           'readAll() over ${store.opsDir.path} returned no ops');
     }
 
@@ -1831,10 +1839,10 @@ class Repository {
     if (state.unsupported.isNotEmpty) {
       return refuse(
           'Part of this notebook was written by a newer version of Slate, so '
-          'this one cannot rebuild it without leaving that part out. Update '
-          'Slate and try again. Nothing has been changed.',
+              'this one cannot rebuild it without leaving that part out. Update '
+              'Slate and try again. Nothing has been changed.',
           '${state.unsupported.length} op(s) with an envelope this build '
-          'cannot read; first: ${state.unsupported.first.kind}');
+              'cannot read; first: ${state.unsupported.first.kind}');
     }
 
     // ── Gate 3: the replay reproduces the container, field for field. ──
@@ -1857,12 +1865,12 @@ class Repository {
     if (differences.isNotEmpty) {
       return refuse(
           'Slate will not do this. Rebuilding this notebook from its saved '
-          'history would not give back what is in it now — '
-          '${differences.length} page(s) or section(s) would come back '
-          'different or empty. Nothing has been changed.',
+              'history would not give back what is in it now — '
+              '${differences.length} page(s) or section(s) would come back '
+              'different or empty. Nothing has been changed.',
           '${differences.length} difference(s), first few:\n'
-          '${differences.take(5).join('\n')}\n'
-          '${ops.length} op(s) replayed');
+              '${differences.take(5).join('\n')}\n'
+              '${ops.length} op(s) replayed');
     }
 
     // ── Gate 5: the room to do it, before anything is written. ─────────
@@ -1875,10 +1883,10 @@ class Repository {
     if (free == null) {
       return refuse(
           'Slate could not check how much room is left on this disk, and it '
-          'will not rebuild a notebook without knowing. Nothing has been '
-          'changed.',
+              'will not rebuild a notebook without knowing. Nothing has been '
+              'changed.',
           'FreeSpace.bytesFor returned null for ${p.dirname(ref.file)}; '
-          'needed ${_mb(need)}');
+              'needed ${_mb(need)}');
     }
     if (free < need) {
       // Needed rounds UP and free rounds DOWN. With both rounded the same way,
@@ -1887,11 +1895,11 @@ class Repository {
       // exactly that way on the owner's 31.7 MB notebook.
       return refuse(
           'There is not enough free space to do this safely. Rebuilding needs '
-          '${_mbUp(need)} free for a moment while it works, and this disk has '
-          '${_mb(free)}. Nothing has been changed — free up some room and try '
-          'again.',
+              '${_mbUp(need)} free for a moment while it works, and this disk has '
+              '${_mb(free)}. Nothing has been changed — free up some room and try '
+              'again.',
           'need ${need}B (2.0 × (${before}B container + ${walBefore}B '
-          'write-ahead log)), free ${free}B');
+              'write-ahead log)), free ${free}B');
     }
 
     // Past here we write — but only to a file the notebook does not depend on.
@@ -1912,8 +1920,10 @@ class Repository {
       fresh = openOnote(tmpPath, notebookId: notebookId, title: ref.title);
       final writer = NotebookWriter(fresh);
       final title = state.meta['title'] as String? ?? ref.title;
-      fresh.execute('INSERT OR REPLACE INTO notebook_meta(key,value) '
-          'VALUES(?,?)', ['title', jsonEncode(title)]);
+      fresh.execute(
+          'INSERT OR REPLACE INTO notebook_meta(key,value) '
+          'VALUES(?,?)',
+          ['title', jsonEncode(title)]);
 
       // **Parents before children, and every node, live or not.** Two foreign
       // keys make the order load-bearing — `nodes.parent_id` onto itself and
@@ -1971,8 +1981,16 @@ class Repository {
             // plan recorded exactly this: "every rebuild a spike ran needed
             // exactly 6 fixups or the INSERT failed".
             stmt.execute([
-              n.id, nodeKindWire(kind), n.parentId, n.title, n.position,
-              n.color, n.level, n.createdAt, n.updatedAt, n.deletedAt,
+              n.id,
+              nodeKindWire(kind),
+              n.parentId,
+              n.title,
+              n.position,
+              n.color,
+              n.level,
+              n.createdAt,
+              n.updatedAt,
+              n.deletedAt,
             ]);
           }
         });
@@ -1987,8 +2005,8 @@ class Repository {
           if (n.kind == 'page' && placed.contains(n.id)) n.id
       ];
       for (var i = 0; i < pageIds.length; i += _rebuildPageChunk) {
-        final slice = pageIds.sublist(
-            i, math.min(i + _rebuildPageChunk, pageIds.length));
+        final slice =
+            pageIds.sublist(i, math.min(i + _rebuildPageChunk, pageIds.length));
         writer.runInTransaction(() {
           for (final pid in slice) {
             final mirror = state.pageMirror(pid);
@@ -2052,13 +2070,13 @@ class Repository {
         _deleteContainerFiles(tmpPath);
         return refuse(
             'Slate will not do this yet. ${absent.length + wrong.length} of '
-            "this notebook's ${wanted.length} pictures and drawings do not "
-            "have a good copy in the notebook's own folder, and rebuilding "
-            'would leave you with the folder alone. Open the notebook, leave '
-            'it open for a minute so Slate can finish copying, then try '
-            'again.',
+                "this notebook's ${wanted.length} pictures and drawings do not "
+                "have a good copy in the notebook's own folder, and rebuilding "
+                'would leave you with the folder alone. Open the notebook, leave '
+                'it open for a minute so Slate can finish copying, then try '
+                'again.',
             'no file: ${_fewHashes(absent)}\n'
-            'wrong bytes: ${_fewHashes(wrong)}');
+                'wrong bytes: ${_fewHashes(wrong)}');
       }
 
       // Verified before it is anywhere near the registered path.
@@ -2072,8 +2090,8 @@ class Repository {
         _deleteContainerFiles(tmpPath);
         return refuse(
             'Slate built a replacement for this notebook and then found it '
-            'was not sound, so it has thrown it away. Nothing has been '
-            'changed.',
+                'was not sound, so it has thrown it away. Nothing has been '
+                'changed.',
             'integrity_check on $tmpPath said "$integrity"');
       }
       if (builtNodes < containerNodes || builtPages < containerPages) {
@@ -2084,10 +2102,10 @@ class Repository {
         _deleteContainerFiles(tmpPath);
         return refuse(
             'Slate built a replacement for this notebook and it came out '
-            'smaller than the one you have, so it has thrown it away. Nothing '
-            'has been changed.',
+                'smaller than the one you have, so it has thrown it away. Nothing '
+                'has been changed.',
             'rebuilt $builtNodes node(s) / $builtPages page(s) against '
-            '$containerNodes / $containerPages in the container');
+                '$containerNodes / $containerPages in the container');
       }
 
       // ── The swap: two renames, neither onto anything. ────────────────
@@ -2130,7 +2148,7 @@ class Repository {
       _settleInterruptedRebuild(ref.file);
       return refuse(
           'Slate could not rebuild this notebook. Your notes have not been '
-          'changed — everything is still where it was.',
+              'changed — everything is still where it was.',
           '$e');
     } finally {
       _clearReclaimMarker();
@@ -2279,11 +2297,14 @@ class Repository {
 
     final ref = notebooks.where((n) => n.id == notebookId).firstOrNull;
     if (ref == null) {
-      return refuse('That notebook is not open, so there is nothing to change.');
+      return refuse(
+          'That notebook is not open, so there is nothing to change.');
     }
     if (isDemoted(ref)) {
-      return refuse('This notebook is already stored the new way. Nothing has '
-          'been changed.', 'already at ${ref.file}');
+      return refuse(
+          'This notebook is already stored the new way. Nothing has '
+              'been changed.',
+          'already at ${ref.file}');
     }
     if (reclaimInProgress) {
       return refuse(
@@ -2302,7 +2323,7 @@ class Repository {
     if (!file.existsSync()) {
       return refuse(
           'Slate cannot find this notebook at the moment, so it has not '
-          'changed anything.',
+              'changed anything.',
           'no file at ${ref.file}');
     }
 
@@ -2312,14 +2333,14 @@ class Repository {
         p.equals(p.basename(logs), workingCopyFileName)) {
       return refuse(
           "Slate cannot tell where this notebook's own folder is, so it has "
-          'not changed anything.',
+              'not changed anything.',
           'refusing to record a log directory inside the cache: $logs');
     }
     final store = OpLogStore.forNotebook(ref.file, logDir: ref.logDir);
     if (!store.opsDir.existsSync()) {
       return refuse(
           "Slate could not find this notebook's own folder, so there would be "
-          'nothing left to rebuild it from. Nothing has been changed.',
+              'nothing left to rebuild it from. Nothing has been changed.',
           'no ops directory at ${store.opsDir.path}');
     }
     final List<Op> ops;
@@ -2328,24 +2349,24 @@ class Repository {
     } catch (e) {
       return refuse(
           "Slate could not read this notebook's history. Nothing has been "
-          'changed.',
+              'changed.',
           '$e');
     }
     if (ops.isEmpty) {
       return refuse(
           "This notebook's folder has no history in it yet, so the notes file "
-          'is still the only copy. Open the notebook, make a change, and try '
-          'again. Nothing has been changed.',
+              'is still the only copy. Open the notebook, make a change, and try '
+              'again. Nothing has been changed.',
           'readAll() over ${store.opsDir.path} returned no ops');
     }
     final state = Materializer()..applyAll(ops);
     if (state.unsupported.isNotEmpty) {
       return refuse(
           'Part of this notebook was written by a newer version of Slate, so '
-          'this one cannot read all of it. Update Slate and try again. '
-          'Nothing has been changed.',
+              'this one cannot read all of it. Update Slate and try again. '
+              'Nothing has been changed.',
           '${state.unsupported.length} op(s) with an envelope this build '
-          'cannot read; first: ${state.unsupported.first.kind}');
+              'cannot read; first: ${state.unsupported.first.kind}');
     }
 
     // ── Gate 3: the history really does describe this notebook. ────────
@@ -2354,13 +2375,13 @@ class Repository {
     if (differences.isNotEmpty) {
       return refuse(
           'Slate will not do this. This notebook has things in it that its '
-          'saved history does not describe — ${differences.length} page(s) or '
-          'section(s) — so the notes file is still the only copy of them and '
-          'must not be treated as one Slate can throw away. Nothing has been '
-          'changed.',
+              'saved history does not describe — ${differences.length} page(s) or '
+              'section(s) — so the notes file is still the only copy of them and '
+              'must not be treated as one Slate can throw away. Nothing has been '
+              'changed.',
           '${differences.length} difference(s), first few:\n'
-          '${differences.take(5).join('\n')}\n'
-          '${ops.length} op(s) replayed');
+              '${differences.take(5).join('\n')}\n'
+              '${ops.length} op(s) replayed');
     }
 
     // ── Gate 4: the room, before anything is written. ──────────────────
@@ -2372,18 +2393,18 @@ class Repository {
     if (free == null) {
       return refuse(
           'Slate could not check how much room is left on this disk, and it '
-          'will not move a notebook without knowing. Nothing has been changed.',
+              'will not move a notebook without knowing. Nothing has been changed.',
           'FreeSpace.bytesFor returned null for ${p.dirname(ref.file)}; '
-          'needed ${_mb(need)}');
+              'needed ${_mb(need)}');
     }
     if (free < need) {
       return refuse(
           'There is not enough free space to do this safely. It needs '
-          '${_mbUp(need)} free for a moment while it works, and this disk has '
-          '${_mb(free)}. Nothing has been changed — free up some room and try '
-          'again.',
+              '${_mbUp(need)} free for a moment while it works, and this disk has '
+              '${_mb(free)}. Nothing has been changed — free up some room and try '
+              'again.',
           'need ${need}B (2.0 × (${before}B container + ${walBefore}B '
-          'write-ahead log)), free ${free}B');
+              'write-ahead log)), free ${free}B');
     }
 
     final oldFile = ref.file;
@@ -2408,7 +2429,8 @@ class Repository {
       // result passes `PRAGMA integrity_check`.
       final open = _open.remove(notebookId);
       checkpointAndClose(open ??
-          openExistingOnote(ref.file, notebookId: notebookId, title: ref.title));
+          openExistingOnote(ref.file,
+              notebookId: notebookId, title: ref.title));
       _decodedPages.remove(notebookId);
 
       await file.copy(dest);
@@ -2439,8 +2461,10 @@ class Repository {
         fresh.execute('DROP TABLE IF EXISTS page_versions;');
         fresh.execute('VACUUM;');
         fresh.execute('PRAGMA user_version = $onoteWorkingCopyVersion;');
-        final integrity =
-            fresh.select('PRAGMA integrity_check;').first.columnAt(0) as String?;
+        final integrity = fresh
+            .select('PRAGMA integrity_check;')
+            .first
+            .columnAt(0) as String?;
         if (integrity != 'ok') {
           throw StateError('integrity_check on the copy said "$integrity"');
         }
@@ -2485,7 +2509,7 @@ class Repository {
       }
       return refuse(
           'Slate could not change how this notebook is stored. Your notes '
-          'have not been changed — everything is still where it was.',
+              'have not been changed — everything is still where it was.',
           '$e');
     } finally {
       _clearReclaimMarker();
@@ -2514,17 +2538,21 @@ class Repository {
   ///
   /// Same commit order as [demoteContainerToCache], for the same reason: copy,
   /// registry, delete.
-  Future<ContainerDemotion> undemoteContainerFromCache(String notebookId) async {
+  Future<ContainerDemotion> undemoteContainerFromCache(
+      String notebookId) async {
     ContainerDemotion refuse(String why, [String? details]) =>
         ContainerDemotion(refusal: why, details: details);
 
     final ref = notebooks.where((n) => n.id == notebookId).firstOrNull;
     if (ref == null) {
-      return refuse('That notebook is not open, so there is nothing to change.');
+      return refuse(
+          'That notebook is not open, so there is nothing to change.');
     }
     if (!isDemoted(ref)) {
-      return refuse('This notebook is already stored the old way. Nothing has '
-          'been changed.', 'not a working copy: ${ref.file}');
+      return refuse(
+          'This notebook is already stored the old way. Nothing has '
+              'been changed.',
+          'not a working copy: ${ref.file}');
     }
     if (reclaimInProgress) {
       return refuse(
@@ -2541,7 +2569,7 @@ class Repository {
     if (!file.existsSync()) {
       return refuse(
           'Slate cannot find this notebook at the moment, so it has not '
-          'changed anything.',
+              'changed anything.',
           'no file at ${ref.file}');
     }
     final wal = File('${ref.file}-wal');
@@ -2552,8 +2580,8 @@ class Repository {
     if (free == null || free < need) {
       return refuse(
           'There is not enough free space to do this safely. It needs '
-          '${_mbUp(need)} free for a moment while it works. Nothing has been '
-          'changed.',
+              '${_mbUp(need)} free for a moment while it works. Nothing has been '
+              'changed.',
           'need ${need}B, free ${free ?? -1}B');
     }
 
@@ -2564,7 +2592,8 @@ class Repository {
     try {
       final open = _open.remove(notebookId);
       checkpointAndClose(open ??
-          openExistingOnote(ref.file, notebookId: notebookId, title: ref.title));
+          openExistingOnote(ref.file,
+              notebookId: notebookId, title: ref.title));
       _decodedPages.remove(notebookId);
 
       await file.copy(dest);
@@ -2619,7 +2648,7 @@ class Repository {
       }
       return refuse(
           'Slate could not put this notebook back the old way. Your notes '
-          'have not been changed — everything is still where it was.',
+              'have not been changed — everything is still where it was.',
           '$e');
     } finally {
       _clearReclaimMarker();
@@ -2714,7 +2743,8 @@ class Repository {
       final pid = r['page_id'] as String;
       String fromContainer;
       try {
-        final m = (jsonDecode(r['json'] as String) as Map).cast<String, dynamic>();
+        final m =
+            (jsonDecode(r['json'] as String) as Map).cast<String, dynamic>();
         final blocks = [
           for (final b in (m['blocks'] as List? ?? const [])) b as Map
         ]..sort((a, b) =>
@@ -3195,15 +3225,16 @@ class Repository {
   /// key onto `nodes(id)` be satisfied", which a soft-deleted row satisfies
   /// perfectly well. Used by the sync pull to decide whether a page it is
   /// about to mirror has somewhere to hang; see `_syncPullLocked`.
-  bool hasNode(String notebookId, String nodeId) =>
-      _db(notebookId).select('SELECT 1 FROM nodes WHERE id=?', [nodeId]).isNotEmpty;
+  bool hasNode(String notebookId, String nodeId) => _db(notebookId)
+      .select('SELECT 1 FROM nodes WHERE id=?', [nodeId]).isNotEmpty;
 
   List<String> _descendants(Database db, String id) {
     final out = <String>[id];
     final queue = [id];
     while (queue.isNotEmpty) {
       final cur = queue.removeLast();
-      for (final r in db.select('SELECT id FROM nodes WHERE parent_id=?', [cur])) {
+      for (final r
+          in db.select('SELECT id FROM nodes WHERE parent_id=?', [cur])) {
         final cid = r['id'] as String;
         out.add(cid);
         queue.add(cid);
@@ -3240,14 +3271,12 @@ class Repository {
     for (final id in _descendants(db, nodeId)) {
       db.execute('UPDATE nodes SET deleted_at=NULL WHERE id=?', [id]);
     }
-    var parent = db
-        .select('SELECT parent_id FROM nodes WHERE id=?', [nodeId])
-        .firstOrNull?['parent_id'] as String?;
+    var parent = db.select('SELECT parent_id FROM nodes WHERE id=?',
+        [nodeId]).firstOrNull?['parent_id'] as String?;
     while (parent != null) {
       db.execute('UPDATE nodes SET deleted_at=NULL WHERE id=?', [parent]);
-      parent = db
-          .select('SELECT parent_id FROM nodes WHERE id=?', [parent])
-          .firstOrNull?['parent_id'] as String?;
+      parent = db.select('SELECT parent_id FROM nodes WHERE id=?',
+          [parent]).firstOrNull?['parent_id'] as String?;
     }
   }
 
@@ -3282,11 +3311,11 @@ class Repository {
     }
   }
 
-  List<({String id, String kind, String title, int deletedAt})> loadDeletedNodes(
-      String notebookId) {
-    final rows = _db(notebookId).select(
-        'SELECT id,kind,title,deleted_at FROM nodes '
-        'WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC');
+  List<({String id, String kind, String title, int deletedAt})>
+      loadDeletedNodes(String notebookId) {
+    final rows =
+        _db(notebookId).select('SELECT id,kind,title,deleted_at FROM nodes '
+            'WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC');
     return [
       for (final r in rows)
         (
@@ -3716,8 +3745,8 @@ class Repository {
   /// against themselves, find no match, and report an unrepairable blob where
   /// the container was holding a perfect copy all along.
   Uint8List? containerBlob(String notebookId, String hash) {
-    final rows = _db(notebookId).select(
-        'SELECT bytes FROM blobs WHERE hash=?', [hash.replaceFirst('sha256:', '')]);
+    final rows = _db(notebookId).select('SELECT bytes FROM blobs WHERE hash=?',
+        [hash.replaceFirst('sha256:', '')]);
     return rows.isEmpty ? null : rows.first['bytes'] as Uint8List;
   }
 
@@ -3750,7 +3779,8 @@ class Repository {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return const [];
     final out = <({String pageId, String snippet})>[];
-    final rows = _db(notebookId).select('SELECT page_id, json FROM page_mirror');
+    final rows =
+        _db(notebookId).select('SELECT page_id, json FROM page_mirror');
     for (final r in rows) {
       final json = r['json'] as String;
       // Cheap reject on the raw JSON before parsing: most pages don't match,
