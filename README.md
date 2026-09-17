@@ -88,6 +88,7 @@ failings by construction, and adds a layer of teaching and AI tools on top:
 - ➗ **Beautiful math entry** — type linearly and watch it build into 2-D notation.
 - 🖊️ **First-class pen and handwriting** — low-latency, pressure-sensitive ink.
 - ❓ **Quizzes**, 🧠 **mind maps** and 📽️ **slide presentations** built into the page.
+- 🗂️ **Tabs** — right-click a page and "Open in new tab" to keep several open across the top and switch between them.
 - 🤖 **Bring-your-own-key AI** — generate quizzes, mind maps, code and page templates, grow a branch, turn a chat answer into a summary/quiz/mind map, and chat with an assistant, using your own OpenAI or OpenRouter key.
 - 📦 **An open, documented file format** — local-first, no lock-in, readable without us.
 - ☁️ **Cloud-optional sync** — through any folder you already sync, or a GitHub repo.
