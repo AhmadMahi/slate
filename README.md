@@ -176,7 +176,9 @@ answer kept.
 1. **Upload a file** — a CSV or Excel file, one row per question: *question, four
    options, correct answer (1-4, A-D, or the exact option text), explanation*
    (1-20 questions). A **Download template** button gives you the shape.
-2. **Paste rows** — paste the same rows straight into the box.
+2. **Paste rows** — paste the same rows straight into the box. **Copy sample
+   schema and prompt** hands you a ready prompt plus the exact format to give
+   any AI, so you can paste its reply straight back in.
 3. **Auto generate with AI** — type a topic and a count and let your connected
    AI provider write the questions. They are validated exactly like an uploaded
    file before they land.
@@ -259,8 +261,11 @@ A small chat for quick questions while you work.
 
 - Turn it on in **Settings → Connections → Ask AI**; a chat bubble appears at the
   bottom-right of the page.
-- Ask a question, get an answer, using your connected provider. Answers are not
-  saved to the notebook.
+- Ask a question, get an answer, using your connected provider. Answers are
+  formatted (bold, headings, lists) and are not saved to the notebook.
+- **It knows the page you are on.** Each question carries the current page's
+  text as context, so "make a quiz for this session", "summarise this", or a
+  question about what you wrote all work from your actual notes.
 - **Do something with an answer.** Each answer has a row of actions (also on
   right-click): **Copy**, or turn it straight into a block on the page —
   **Insert as summary** (a text block), **Insert as quiz**, or **Insert as mind
