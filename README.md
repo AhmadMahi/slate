@@ -166,7 +166,10 @@ Page link, **Page window** (a live embed of another page), and Template.
 
 A multiple-choice quiz that lives on the page: name at the top, one question at a
 time, four options, per-question **Submit** revealing green/red and an
-explanation, and a final score.
+explanation, and a final score that counts up over a short celebration. A
+**Present** button opens the quiz full-screen with the page behind it blurred,
+so a room can focus on it; **Back** returns to the in-page card with every
+answer kept.
 
 **Three ways to fill a quiz** (Insert → Quiz):
 
