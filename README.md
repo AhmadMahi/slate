@@ -6,7 +6,7 @@
 
 *Your notes. Your format. Every platform.*
 
-`Freeform canvas` · `Handwriting & math` · `Quizzes & mind maps` · `Presentations` · `Ask AI` · `Open file format` · `Local-first` · `macOS · Windows · Linux`
+`Freeform canvas` · `Handwriting & math` · `Quizzes & mind maps` · `Presentations` · `Session timer` · `Ask AI` · `Open file format` · `Local-first` · `macOS · Windows · Linux`
 
 </div>
 
@@ -33,6 +33,7 @@
   - [Quizzes](#quizzes)
   - [Mind maps](#mind-maps)
   - [Presentations](#presentations)
+  - [Session agenda and timer](#session-agenda-and-timer)
   - [AI features](#ai-features)
   - [Ask AI](#ask-ai)
   - [Sync and backup](#sync-and-backup)
@@ -219,6 +220,27 @@ Page through a slide deck on the page, the way you would run it while teaching
 - The deck is stored once as a content-addressed file and pages render on demand,
   so a big deck costs the PDF's own size, once.
 
+### Session agenda and timer
+
+A floating, translucent agenda that sits over the page (it is never part of a
+page and never exported). It doubles as a live session timer for teaching.
+
+- **A running to-do for the session.** Add items, check them off, reorder them,
+  and clear the list. Keep it **per page** or shared across the **whole
+  notebook** (Settings), and it is remembered next time.
+- **Turn on the session timer.** Each item gets a duration, and the header shows
+  the total session length. Start an item and the note folds to a single line
+  with a live countdown — green while there is time, red in overtime — then a
+  second tap completes it.
+- **Breaks.** Add a "break" item and starting it opens a calm full-screen
+  countdown, with a motivating line, a quirky line written from what you are
+  teaching, or no message — your choice is remembered.
+- **Build it fast.** Paste a `topic, minutes` CSV to lay out a whole timed
+  agenda at once, copy a ready-made prompt for any LLM, or let the built-in AI
+  shape rough notes into a timed agenda with breaks.
+- **Make it yours.** Drag it anywhere, resize it from the corner (the size is
+  remembered), and set how solid it looks.
+
 ### AI features
 
 Slate can use a cloud AI with **your own API key** — nothing is sent anywhere
@@ -380,7 +402,3 @@ original author.
 <div align="center">
 <sub>Slate is not affiliated with or endorsed by Microsoft. "OneNote" and "Microsoft" are trademarks of Microsoft Corporation, referenced here for comparison and interoperability only.</sub>
 </div>
-
----
-
-<sub>Slate is a fork of, and takes its foundation and inspiration from, **[Openote](https://github.com/icmric/openote)** by icmric — with thanks and full credit to the original project.</sub>
